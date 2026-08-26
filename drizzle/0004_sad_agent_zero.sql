@@ -1,0 +1,2 @@
+ALTER TABLE `server_backups` MODIFY COLUMN `status` enum('ready','creating','restoring','failed') NOT NULL DEFAULT 'ready';--> statement-breakpoint
+ALTER TABLE `server_backups` ADD `artifactStatus` enum('idle','creating','ready','failed') DEFAULT 'idle' NOT NULL;

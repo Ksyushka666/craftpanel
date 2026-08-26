@@ -1,17 +1,8 @@
 import { int, mysqlEnum, mysqlTable, text, timestamp, varchar } from "drizzle-orm/mysql-core";
 
-/**
- * Core user table backing auth flow.
- * Extend this file with additional tables as your product grows.
- * Columns use camelCase to match both database fields and generated types.
- */
+/** Core user table backing the Manus OAuth flow. */
 export const users = mysqlTable("users", {
-  /**
-   * Surrogate primary key. Auto-incremented numeric value managed by the database.
-   * Use this for relations between tables.
-   */
   id: int("id").autoincrement().primaryKey(),
-  /** Manus OAuth identifier (openId) returned from the OAuth callback. Unique per user. */
   openId: varchar("openId", { length: 64 }).notNull().unique(),
   name: text("name"),
   email: varchar("email", { length: 320 }),
@@ -22,7 +13,82 @@ export const users = mysqlTable("users", {
   lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),
 });
 
+export const minecraftServers = mysqlTable("minecraft_servers", {
+  id: int("id").autoincrement().primaryKey(),
+  ownerId: int("ownerId").notNull(),
+  name: varchar("name", { length: 120 }).notNull(),
+  slug: varchar("slug", { length: 140 }).notNull(),
+  serverType: mysqlEnum("serverType", ["java", "bedrock"]).default("java").notNull(),
+  core: varchar("core", { length: 64 }).default("Paper").notNull(),
+  version: varchar("version", { length: 32 }).default("1.21.1").notNull(),
+  status: mysqlEnum("status", ["online", "offline", "starting", "stopping"]).default("offline").notNull(),
+  maxPlayers: int("maxPlayers").default(20).notNull(),
+  playersOnline: int("playersOnline").default(0).notNull(),
+  tps: int("tps").default(20).notNull(),
+  ramUsedMb: int("ramUsedMb").default(0).notNull(),
+  ramTotalMb: int("ramTotalMb").default(4096).notNull(),
+  cpuPercent: int("cpuPercent").default(0).notNull(),
+  diskUsedGb: int("diskUsedGb").default(0).notNull(),
+  diskTotalGb: int("diskTotalGb").default(40).notNull(),
+  address: varchar("address", { length: 180 }),
+  motd: varchar("motd", { length: 255 }),
+  pvp: int("pvp").default(1).notNull(),
+  onlineMode: int("onlineMode").default(1).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export const serverActions = mysqlTable("server_actions", {
+  id: int("id").autoincrement().primaryKey(),
+  serverId: int("serverId").notNull(),
+  ownerId: int("ownerId").notNull(),
+  action: varchar("action", { length: 32 }).notNull(),
+  payload: text("payload"),
+  output: text("output"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export const serverBackups = mysqlTable("server_backups", {
+  id: int("id").autoincrement().primaryKey(),
+  serverId: int("serverId").notNull(),
+  ownerId: int("ownerId").notNull(),
+  name: varchar("name", { length: 160 }).notNull(),
+  sizeGb: int("sizeGb").default(0).notNull(),
+  status: mysqlEnum("status", ["ready", "creating", "restoring", "failed"]).default("ready").notNull(),
+  artifactStatus: mysqlEnum("artifactStatus", ["idle", "creating", "ready", "failed"]).default("idle").notNull(),
+  artifactKey: varchar("artifactKey", { length: 255 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export const catalogInstallations = mysqlTable("catalog_installations", {
+  id: int("id").autoincrement().primaryKey(),
+  serverId: int("serverId").notNull(),
+  ownerId: int("ownerId").notNull(),
+  catalogType: mysqlEnum("catalogType", ["modpack", "plugin", "map"]).notNull(),
+  name: varchar("name", { length: 160 }).notNull(),
+  version: varchar("version", { length: 64 }).notNull(),
+  status: mysqlEnum("status", ["queued", "installed", "failed"]).default("queued").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export const serverFiles = mysqlTable("server_files", {
+  id: int("id").autoincrement().primaryKey(),
+  serverId: int("serverId").notNull(),
+  ownerId: int("ownerId").notNull(),
+  path: varchar("path", { length: 255 }).notNull(),
+  name: varchar("name", { length: 120 }).notNull(),
+  kind: mysqlEnum("kind", ["file", "folder"]).default("file").notNull(),
+  sizeBytes: int("sizeBytes").default(0).notNull(),
+  storageKey: varchar("storageKey", { length: 255 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
-
-// TODO: Add your tables here
+export type MinecraftServer = typeof minecraftServers.$inferSelect;
+export type InsertMinecraftServer = typeof minecraftServers.$inferInsert;
+export type ServerAction = typeof serverActions.$inferSelect;
+export type ServerBackup = typeof serverBackups.$inferSelect;
+export type CatalogInstallation = typeof catalogInstallations.$inferSelect;
+export type ServerFile = typeof serverFiles.$inferSelect;

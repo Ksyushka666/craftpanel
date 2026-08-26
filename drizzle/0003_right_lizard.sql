@@ -1,0 +1,1 @@
+ALTER TABLE `server_backups` ADD `artifactKey` varchar(255);

@@ -1,0 +1,26 @@
+# Project TODO
+
+- [x] Create responsive multi-server dashboard with server cards
+- [x] Add scannable online state, TPS, players, RAM, CPU, and disk metrics
+- [x] Add start, stop, and restart controls with action feedback
+- [x] Add in-panel command console with command history and feedback
+- [x] Add server configuration views for Java/Bedrock, core/version, player limit, and basic properties
+- [x] Add catalog-style install interfaces for modpacks, plugins, and maps
+- [x] Add file-management entry point from the server workspace
+- [x] Add backup overview with restore and download workflow actions
+- [x] Enforce authenticated access and owner-scoped server management procedures
+- [x] Add database schema, queries, and tRPC procedures for server management
+- [x] Add Vitest coverage for ownership isolation and server actions
+- [x] Add local deployment documentation and public repository metadata
+- [x] Run typecheck, tests, build, and visual responsive verification
+- [ ] Create public GitHub repository and push the project
+- [x] Implement persistent catalog install workflows with server-side procedures and install history
+- [x] Create a real authenticated file-management surface instead of a placeholder toast
+- [x] Implement secure backup artifact download and restore status workflow
+- [x] Surface catalog install history with type, version, status, and timestamp
+- [x] Use honest queued/ready runtime states for backup artifacts and restores, with visible status until a runtime adapter completes the job
+- [x] Add authenticated runtime-adapter callback for restore completion/failure
+- [x] Persist backup artifact generation state as creating/ready/failed and expose it in the panel
+- [x] Add tests for runtime completion and artifact generation state transitions
+- [x] Test artifactStatus creating to ready and creating to failed transitions
+- [x] Test unauthorized runtime callback rejection
