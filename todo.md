@@ -13,7 +13,7 @@
 - [x] Add Vitest coverage for ownership isolation and server actions
 - [x] Add local deployment documentation and public repository metadata
 - [x] Run typecheck, tests, build, and visual responsive verification
-- [ ] Create public GitHub repository and push the project
+- [x] Create public GitHub repository and push the project
 - [x] Implement persistent catalog install workflows with server-side procedures and install history
 - [x] Create a real authenticated file-management surface instead of a placeholder toast
 - [x] Implement secure backup artifact download and restore status workflow
