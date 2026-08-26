@@ -24,3 +24,15 @@
 - [x] Add tests for runtime completion and artifact generation state transitions
 - [x] Test artifactStatus creating to ready and creating to failed transitions
 - [x] Test unauthorized runtime callback rejection
+- [x] Add persistent light/dark theme toggle with accessible control
+- [x] Add owner-scoped real-time server log stream for the console
+- [x] Add severity-based color highlighting and log filters in console
+- [x] Add tests, responsive visual verification, and documentation for themes and live logs
+- [x] Add Render deployment workflow via GitHub Actions
+- [x] Add Railway deployment workflow or explicit provider selection path
+- [x] Add secure provider secret documentation without committing credentials
+- [x] Validate build, workflow YAML, and publish deployment configuration to GitHub
+- [ ] Add dedicated tests for theme toggle and live log server procedures
+- [ ] Capture fresh responsive visual verification for theme and live console UI
+- [ ] Document theme switching and live log callback usage
+- [ ] Commit and push Render/Railway workflows, render.yaml, and deployment docs to GitHub

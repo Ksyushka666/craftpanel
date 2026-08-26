@@ -9,6 +9,7 @@ import {
   createOrGetBackupArtifact,
   createOwnedFile,
   createOwnedInstallation,
+  createServerLog,
   deleteOwnedFile,
   getOwnedBackup,
   getOwnedBackups,
@@ -17,6 +18,7 @@ import {
   getOwnedServer,
   getOwnedServers,
   getRecentServerActions,
+  getRecentServerLogs,
   logServerAction,
   requestOwnedBackupRestore,
   setOwnedBackupArtifactStatus,
@@ -46,6 +48,17 @@ export const appRouter = router({
         const provided = ctx.req.headers["x-craftpanel-runtime-token"];
         if (!expected || provided !== expected) throw new Error("Unauthorized runtime callback");
         return updateBackupFromRuntime(input.backupId, input);
+      }),
+    logCallback: publicProcedure
+      .input(z.object({ serverId: z.number().int().positive(), ownerId: z.number().int().positive(), level: z.enum(["system", "info", "warn", "error", "debug"]), source: z.string().trim().min(1).max(64).default("minecraft"), message: z.string().trim().min(1).max(4000) }))
+      .mutation(async ({ ctx, input }) => {
+        const expected = process.env.MINECRAFT_RUNTIME_TOKEN;
+        const provided = ctx.req.headers["x-craftpanel-runtime-token"];
+        if (!expected || provided !== expected) throw new Error("Unauthorized runtime callback");
+        const server = await getOwnedServer(input.ownerId, input.serverId);
+        if (!server) throw new Error("Server not found");
+        await createServerLog(input.ownerId, input.serverId, input.level, input.message, input.source);
+        return { success: true } as const;
       }),
   }),
 
@@ -101,6 +114,13 @@ export const appRouter = router({
     actions: protectedProcedure
       .input(serverIdInput)
       .query(({ ctx, input }) => getRecentServerActions(ctx.user.id, input.id)),
+    logs: protectedProcedure
+      .input(serverIdInput)
+      .query(async ({ ctx, input }) => {
+        const server = await getOwnedServer(ctx.user.id, input.id);
+        if (!server) throw new Error("Server not found");
+        return getRecentServerLogs(ctx.user.id, input.id);
+      }),
     backups: protectedProcedure
       .input(serverIdInput)
       .query(async ({ ctx, input }) => {

@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
+import { AppTheme, getNextTheme, getStoredTheme } from "@/lib/theme";
 
-type Theme = "light" | "dark";
+type Theme = AppTheme;
 
 interface ThemeContextType {
   theme: Theme;
@@ -24,7 +25,7 @@ export function ThemeProvider({
   const [theme, setTheme] = useState<Theme>(() => {
     if (switchable) {
       const stored = localStorage.getItem("theme");
-      return (stored as Theme) || defaultTheme;
+      return getStoredTheme(defaultTheme, stored);
     }
     return defaultTheme;
   });
@@ -44,7 +45,7 @@ export function ThemeProvider({
 
   const toggleTheme = switchable
     ? () => {
-        setTheme(prev => (prev === "light" ? "dark" : "light"));
+        setTheme(prev => getNextTheme(prev));
       }
     : undefined;
 

@@ -8,6 +8,7 @@ import {
   serverActions,
   serverBackups,
   serverFiles,
+  serverLogs,
   users,
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
@@ -154,10 +155,19 @@ export async function updateOwnedServerConfig(ownerId: number, serverId: number,
   return getOwnedServer(ownerId, serverId);
 }
 
+export type ServerLogLevel = "system" | "info" | "warn" | "error" | "debug";
+
+export async function createServerLog(ownerId: number, serverId: number, level: ServerLogLevel, message: string, source = "minecraft") {
+  const db = await getDb();
+  if (!db) throw new Error("Database is not available");
+  await db.insert(serverLogs).values({ ownerId, serverId, level, source, message });
+}
+
 export async function logServerAction(ownerId: number, serverId: number, action: string, payload?: string, output?: string) {
   const db = await getDb();
   if (!db) throw new Error("Database is not available");
   await db.insert(serverActions).values({ serverId, ownerId, action, payload, output });
+  await db.insert(serverLogs).values({ ownerId, serverId, level: action === "command" ? "info" : "system", source: "panel", message: output || payload || action });
   return getRecentServerActions(ownerId, serverId);
 }
 
@@ -168,6 +178,15 @@ export async function getRecentServerActions(ownerId: number, serverId: number) 
     .where(and(eq(serverActions.serverId, serverId), eq(serverActions.ownerId, ownerId)))
     .orderBy(desc(serverActions.createdAt))
     .limit(40);
+}
+
+export async function getRecentServerLogs(ownerId: number, serverId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(serverLogs)
+    .where(and(eq(serverLogs.serverId, serverId), eq(serverLogs.ownerId, ownerId)))
+    .orderBy(desc(serverLogs.createdAt))
+    .limit(80);
 }
 
 export async function getOwnedInstallations(ownerId: number, serverId: number) {

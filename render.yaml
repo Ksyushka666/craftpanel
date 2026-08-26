@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: craftpanel
+    runtime: node
+    plan: free
+    region: frankfurt
+    buildCommand: pnpm install --frozen-lockfile && pnpm build
+    startCommand: pnpm start
+    healthCheckPath: /
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: PNPM_VERSION
+        value: "10"
+      - key: NODE_ENV
+        value: production

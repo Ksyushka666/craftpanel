@@ -42,9 +42,19 @@ export const serverActions = mysqlTable("server_actions", {
   id: int("id").autoincrement().primaryKey(),
   serverId: int("serverId").notNull(),
   ownerId: int("ownerId").notNull(),
-  action: varchar("action", { length: 32 }).notNull(),
+  action: varchar("action", { length: 64 }).notNull(),
   payload: text("payload"),
   output: text("output"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export const serverLogs = mysqlTable("server_logs", {
+  id: int("id").autoincrement().primaryKey(),
+  serverId: int("serverId").notNull(),
+  ownerId: int("ownerId").notNull(),
+  level: mysqlEnum("level", ["system", "info", "warn", "error", "debug"]).default("info").notNull(),
+  source: varchar("source", { length: 64 }).default("minecraft").notNull(),
+  message: text("message").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 
@@ -89,6 +99,7 @@ export type InsertUser = typeof users.$inferInsert;
 export type MinecraftServer = typeof minecraftServers.$inferSelect;
 export type InsertMinecraftServer = typeof minecraftServers.$inferInsert;
 export type ServerAction = typeof serverActions.$inferSelect;
+export type ServerLog = typeof serverLogs.$inferSelect;
 export type ServerBackup = typeof serverBackups.$inferSelect;
 export type CatalogInstallation = typeof catalogInstallations.$inferSelect;
 export type ServerFile = typeof serverFiles.$inferSelect;
