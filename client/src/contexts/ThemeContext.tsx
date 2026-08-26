@@ -25,7 +25,8 @@ export function ThemeProvider({
   const [theme, setTheme] = useState<Theme>(() => {
     if (switchable) {
       const stored = localStorage.getItem("theme");
-      return getStoredTheme(defaultTheme, stored);
+      const queryTheme = new URLSearchParams(window.location.search).get("theme");
+      return getStoredTheme(defaultTheme, queryTheme ?? stored);
     }
     return defaultTheme;
   });

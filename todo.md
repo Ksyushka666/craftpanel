@@ -32,7 +32,13 @@
 - [x] Add Railway deployment workflow or explicit provider selection path
 - [x] Add secure provider secret documentation without committing credentials
 - [x] Validate build, workflow YAML, and publish deployment configuration to GitHub
-- [ ] Add dedicated tests for theme toggle and live log server procedures
-- [ ] Capture fresh responsive visual verification for theme and live console UI
-- [ ] Document theme switching and live log callback usage
-- [ ] Commit and push Render/Railway workflows, render.yaml, and deployment docs to GitHub
+- [x] Add dedicated tests for theme toggle and live log server procedures
+- [x] Capture fresh responsive visual verification for theme and live console UI
+- [x] Document theme switching and live log callback usage
+- [x] Commit and push Render/Railway workflows, render.yaml, and deployment docs to GitHub
+- [x] Capture both light and dark screenshots with the live console and severity filters visible
+- [x] Capture a narrow mobile screenshot for the theme toggle and live console layout
+- [x] Record final theme/log visual verification notes
+- [x] Capture light and dark screenshots with a selected active server so the live console and filters are visible
+- [x] Capture a narrow mobile screenshot that includes both the theme toggle and live console
+- [x] Record the active-server visual verification evidence
