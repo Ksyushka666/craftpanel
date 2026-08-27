@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getLoginButtonLabel, isLoginPending, isLoginRetryable } from "./oauthLoginState";
+import { getAuthPollResult, getLoginButtonLabel, isLoginPending, isLoginRetryable } from "./oauthLoginState";
 
 describe("OAuth login UI states", () => {
   it("disables login while waiting for the popup", () => {
@@ -13,6 +13,12 @@ describe("OAuth login UI states", () => {
     expect(isLoginRetryable("error")).toBe(true);
     expect(getLoginButtonLabel("timed_out")).toBe("Повторить вход");
     expect(getLoginButtonLabel("error")).toBe("Повторить вход");
+  });
+
+  it("accepts a session even when the OAuth popup has already closed", () => {
+    expect(getAuthPollResult(true, true)).toBe("authenticated");
+    expect(getAuthPollResult(false, true)).toBe("closed");
+    expect(getAuthPollResult(false, false)).toBe("continue");
   });
 
   it("keeps the normal label for idle and waiting states", () => {

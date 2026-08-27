@@ -9,3 +9,8 @@ export const getLoginButtonLabel = (status: LoginStatus) =>
     : isLoginPending(status)
       ? "Ожидаем подтверждение…"
       : "Войти в CraftPanel";
+
+export type AuthPollResult = "authenticated" | "closed" | "continue";
+
+export const getAuthPollResult = (hasUser: boolean, popupClosed: boolean): AuthPollResult =>
+  hasUser ? "authenticated" : popupClosed ? "closed" : "continue";

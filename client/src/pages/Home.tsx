@@ -61,7 +61,9 @@ import {
   FileArchive,
   FileCog,
   FileStack,
+  FileText,
   FolderOpen,
+  Image as ImageIcon,
   Gamepad2,
   HardDrive,
   LayoutGrid,
@@ -1822,6 +1824,7 @@ function FileManagerView({ server }: { server: Server }) {
   const [dragActive, setDragActive] = useState(false);
   const [uploadState, setUploadState] = useState<{ status: "idle" | "uploading" | "success" | "error"; progress: number; name?: string }>({ status: "idle", progress: 0 });
   const [archivePreview, setArchivePreview] = useState<{ file: File; preview: ArchivePreview } | null>(null);
+  const [archiveSearch, setArchiveSearch] = useState("");
   const utils = trpc.useUtils();
   const filesQuery = trpc.servers.files.list.useQuery({
     serverId: server.id,
@@ -1937,6 +1940,7 @@ function FileManagerView({ server }: { server: Server }) {
         }
         const preview = await getArchivePreview(file);
         setArchivePreview({ file, preview });
+        setArchiveSearch("");
         setUploadState({ status: "idle", progress: 0, name: file.name });
         return;
       } catch (error) {
@@ -1951,7 +1955,10 @@ function FileManagerView({ server }: { server: Server }) {
   const confirmArchiveUpload = async () => {
     if (!archivePreview) return;
     const uploaded = await uploadFile(archivePreview.file);
-    if (uploaded) setArchivePreview(null);
+    if (uploaded) {
+      setArchivePreview(null);
+      setArchiveSearch("");
+    }
   };
   const segments =
     parentPath === "/" ? [] : parentPath.split("/").filter(Boolean);
@@ -1961,6 +1968,11 @@ function FileManagerView({ server }: { server: Server }) {
         ? "/"
         : parentPath.split("/").slice(0, -1).join("/") || "/"
     );
+  const filteredArchiveEntries = useMemo(() => {
+    const entries = archivePreview?.preview.entries ?? [];
+    const query = archiveSearch.trim().toLowerCase();
+    return query ? entries.filter(entry => entry.name.toLowerCase().includes(query)) : entries;
+  }, [archivePreview, archiveSearch]);
   const createFile = (event: React.FormEvent) => {
     event.preventDefault();
     if (!name.trim()) return;
@@ -2138,8 +2150,38 @@ function FileManagerView({ server }: { server: Server }) {
               <div className="rounded-xl bg-[#f1f3ea] p-3 dark:bg-[#202a21]"><p className="text-[10px] uppercase tracking-wide text-[#899386]">Файлов</p><p className="mt-1 text-sm font-semibold">{archivePreview.preview.totalEntries}</p></div>
               <div className="rounded-xl bg-[#f1f3ea] p-3 dark:bg-[#202a21]"><p className="text-[10px] uppercase tracking-wide text-[#899386]">Распакованный размер</p><p className="mt-1 text-sm font-semibold">{formatBytes(archivePreview.preview.totalUncompressedSize)}</p></div>
             </div>
-            {archivePreview.preview.previewAvailable ? <div className="max-h-56 overflow-auto rounded-xl border border-[#e7e9df] bg-white/60 dark:border-white/10 dark:bg-black/10"><div className="divide-y divide-[#e7e9df] dark:divide-white/10">{archivePreview.preview.entries.map((entry, index) => <div key={`${entry.name}-${index}`} className="flex items-center justify-between gap-3 px-3 py-2 text-xs"><span className="min-w-0 truncate">{entry.directory ? "📁 " : "📄 "}{entry.name}</span><span className="shrink-0 text-[#899386]">{entry.directory ? "папка" : formatBytes(entry.size)}</span></div>)}</div>{archivePreview.preview.totalEntries > archivePreview.preview.entries.length && <p className="border-t border-[#e7e9df] px-3 py-2 text-[11px] text-[#899386] dark:border-white/10">Показаны первые {archivePreview.preview.entries.length} элементов из {archivePreview.preview.totalEntries}.</p>}</div> : <p className="rounded-xl bg-[#f1f3ea] p-3 text-xs text-[#899386] dark:bg-[#202a21]">Список файлов для этого формата недоступен, но проверка сигнатуры пройдена.</p>}
-            <div className="flex flex-col-reverse justify-end gap-2 sm:flex-row"><Button variant="outline" onClick={() => setArchivePreview(null)} className="rounded-xl">Отменить</Button><Button onClick={confirmArchiveUpload} disabled={uploadState.status === "uploading"} className="rounded-xl bg-[#c5ff3f] text-[#151a16] hover:bg-[#d7ff76]">Отправить на сервер <ArrowUpRight className="ml-2 h-4 w-4" /></Button></div>
+            {archivePreview.preview.previewAvailable ? (
+              <>
+                <div className="relative">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#899386]" />
+                  <Input value={archiveSearch} onChange={event => setArchiveSearch(event.target.value)} placeholder="Поиск файлов в архиве…" aria-label="Поиск файлов в архиве" className="h-10 rounded-xl border-[#dfe2d6] bg-white/70 pl-9 text-sm dark:border-white/10 dark:bg-black/10" />
+                </div>
+                <div className="max-h-56 overflow-auto rounded-xl border border-[#e7e9df] bg-white/60 dark:border-white/10 dark:bg-black/10">
+                  <div className="divide-y divide-[#e7e9df] dark:divide-white/10">
+                    {filteredArchiveEntries.length ? filteredArchiveEntries.map((entry, index) => (
+                      <div key={`${entry.name}-${index}`} className="flex items-center justify-between gap-3 px-3 py-2 text-xs">
+                        <span className="flex min-w-0 items-center gap-2 truncate">
+                          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-[#f1f3ea] text-[#799d32] dark:bg-[#25321f] dark:text-[#c5ff3f]" aria-hidden="true">
+                            {entry.directory ? <FolderOpen className="h-3.5 w-3.5" /> : /\.(png|jpe?g|gif|webp|bmp|svg|ico)$/i.test(entry.name) ? <ImageIcon className="h-3.5 w-3.5" /> : <FileText className="h-3.5 w-3.5" />}
+                          </span>
+                          <span className="truncate">{entry.name}</span>
+                        </span>
+                        <span className="shrink-0 text-[#899386]">{entry.directory ? "папка" : formatBytes(entry.size)}</span>
+                      </div>
+                    )) : <p className="p-6 text-center text-xs text-[#899386]">По запросу ничего не найдено.</p>}
+                  </div>
+                  {archivePreview.preview.totalEntries > archivePreview.preview.entries.length && !archiveSearch && <p className="border-t border-[#e7e9df] px-3 py-2 text-[11px] text-[#899386] dark:border-white/10">Показаны первые {archivePreview.preview.entries.length} элементов из {archivePreview.preview.totalEntries}.</p>}
+                  {archiveSearch && <p className="border-t border-[#e7e9df] px-3 py-2 text-[11px] text-[#899386] dark:border-white/10">Найдено: {filteredArchiveEntries.length}</p>}
+                </div>
+              </>
+            ) : <p className="rounded-xl bg-[#f1f3ea] p-3 text-xs text-[#899386] dark:bg-[#202a21]">Список файлов для этого формата недоступен, но проверка сигнатуры пройдена.</p>}
+            <div className="flex flex-col-reverse justify-end gap-2 sm:flex-row">
+              <Button variant="outline" onClick={() => { setArchivePreview(null); setArchiveSearch(""); }} className="rounded-xl">Отменить</Button>
+              <Button onClick={confirmArchiveUpload} disabled={uploadState.status === "uploading"} className="relative overflow-hidden rounded-xl bg-[#c5ff3f] text-[#151a16] hover:bg-[#d7ff76]">
+                <span className="absolute inset-y-0 left-0 bg-white/25 transition-[width] duration-200" style={{ width: `${uploadState.status === "uploading" ? uploadState.progress : 0}%` }} />
+                <span className="relative flex items-center justify-center">{uploadState.status === "uploading" ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Отправка {uploadState.progress}%</> : <>Отправить на сервер <ArrowUpRight className="ml-2 h-4 w-4" /></>}</span>
+              </Button>
+            </div>
           </CardContent>
         </Card>
       )}

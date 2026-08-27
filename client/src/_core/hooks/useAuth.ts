@@ -1,6 +1,7 @@
 import { createOAuthLoginUrl, OAUTH_LOGIN_TIMEOUT_MS, startLogin } from "@/const";
 import { trpc } from "@/lib/trpc";
 import { TRPCClientError } from "@trpc/client";
+import { getAuthPollResult } from "@/lib/oauthLoginState";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 type UseAuthOptions = {
@@ -21,6 +22,11 @@ export function useAuth(options?: UseAuthOptions) {
   const loginTimerRef = useRef<number | null>(null);
   const loginPollRef = useRef<number | null>(null);
   const popupRef = useRef<Window | null>(null);
+
+  const meQuery = trpc.auth.me.useQuery(undefined, {
+    retry: false,
+    refetchOnWindowFocus: false,
+  });
 
   const clearLoginWatch = useCallback(() => {
     if (loginTimerRef.current !== null) window.clearTimeout(loginTimerRef.current);
@@ -48,14 +54,17 @@ export function useAuth(options?: UseAuthOptions) {
     popupRef.current = popup;
     setLoginStatus("waiting");
     loginPollRef.current = window.setInterval(async () => {
-      if (popup.closed) {
-        clearLoginWatch();
-        setLoginStatus("idle");
-        return;
-      }
       try {
+        // The callback can close the popup immediately after setting the cookie.
+        // Refetch before checking popup.closed so the parent still observes the new session.
         const result = await meQuery.refetch();
-        if (result.data) {
+        const pollResult = getAuthPollResult(Boolean(result.data), popup.closed);
+        if (pollResult === "authenticated") {
+          clearLoginWatch();
+          setLoginStatus("idle");
+          return;
+        }
+        if (pollResult === "closed") {
           clearLoginWatch();
           setLoginStatus("idle");
         }
@@ -70,11 +79,6 @@ export function useAuth(options?: UseAuthOptions) {
   }, [clearLoginWatch]);
 
   useEffect(() => () => clearLoginWatch(), [clearLoginWatch]);
-
-  const meQuery = trpc.auth.me.useQuery(undefined, {
-    retry: false,
-    refetchOnWindowFocus: false,
-  });
 
   const logoutMutation = trpc.auth.logout.useMutation({
     onSuccess: () => {

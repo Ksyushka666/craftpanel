@@ -118,3 +118,11 @@
 - [x] Add archive preview UI with file list, count, total size, cancel, and confirm upload actions
 - [x] Keep unverified archives blocked from final upload
 - [x] Add archive preview tests, run validation, and save a checkpoint
+- [x] Add progress indicator and loading animation to archive confirm-upload button
+- [x] Add search input and filtered results inside archive preview
+- [x] Add folder/document/image icons for archive preview entries
+- [x] Add regression tests, run validation, and save a checkpoint
+- [x] Diagnose and fix post-OAuth redirect not reaching the server management panel
+- [x] Re-test authenticated redirect, route state, and production build
+- [x] Verify OAuth end-to-end in browser and confirm successful navigation to /servers, or document the external browser limitation
+- [x] Add a focused regression test for popup-close/auth.me polling race

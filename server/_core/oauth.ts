@@ -10,6 +10,8 @@ function getQueryParam(req: Request, key: string): string | undefined {
   return typeof value === "string" ? value : undefined;
 }
 
+export const OAUTH_SUCCESS_REDIRECT_PATH = "/servers";
+
 export function resolveSessionName(userInfo: { openId: string; name?: string | null; email?: string | null }) {
   return userInfo.name?.trim() || userInfo.email?.trim() || userInfo.openId;
 }
@@ -61,7 +63,7 @@ export function registerOAuthRoutes(app: Express) {
       const cookieOptions = getSessionCookieOptions(req);
       res.cookie(COOKIE_NAME, sessionToken, { ...cookieOptions, maxAge: ONE_YEAR_MS });
 
-      res.redirect(302, "/");
+      res.redirect(302, OAUTH_SUCCESS_REDIRECT_PATH);
     } catch (error) {
       console.error("[OAuth] Callback failed", error);
       res.status(500).json({ error: "OAuth callback failed" });
