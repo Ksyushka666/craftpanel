@@ -32,6 +32,7 @@ import {
   createMetricPoint,
   type MetricPoint,
 } from "@/lib/metrics";
+import { isArchiveFileName, validateArchiveFile } from "@/lib/archiveValidation";
 import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "wouter";
 import { toast } from "sonner";
@@ -1895,6 +1896,22 @@ function FileManagerView({ server }: { server: Server }) {
     if (file.size > 512 * 1024 * 1024) {
       toast.error("Максимальный размер загрузки — 512 MiB");
       return;
+    }
+    if (isArchiveFileName(file.name)) {
+      try {
+        const validation = await validateArchiveFile(file);
+        if (!validation.valid) {
+          setUploadState({ status: "error", progress: 0, name: file.name });
+          toast.error("Архив не прошёл проверку", { description: validation.reason });
+          window.setTimeout(() => setUploadState({ status: "idle", progress: 0 }), 3200);
+          return;
+        }
+      } catch {
+        setUploadState({ status: "error", progress: 0, name: file.name });
+        toast.error("Не удалось проверить архив", { description: "Повторите загрузку или проверьте файл локально." });
+        window.setTimeout(() => setUploadState({ status: "idle", progress: 0 }), 3200);
+        return;
+      }
     }
     setUploadState({ status: "uploading", progress: 0, name: file.name });
     try {

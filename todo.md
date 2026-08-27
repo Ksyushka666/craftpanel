@@ -110,3 +110,7 @@
 - [x] Diagnose production Manus OAuth account-selection hang after callback launch
 - [x] Fix OAuth redirect/callback/session cookie flow for Render production
 - [x] Add OAuth regression checks and verify Render deployment; manual account-selection E2E is blocked because browser takeover is unavailable
+- [x] Add OAuth authorization timeout state and retry login action
+- [x] Add archive integrity/type validation before drag-and-drop upload with structural ZIP/JAR checks
+- [x] Show toast notifications for damaged archive upload errors
+- [x] Add OAuth timeout/retry and archive integrity regression tests; validation and checkpoint follow this update

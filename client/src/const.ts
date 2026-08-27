@@ -1,6 +1,7 @@
 import { OAUTH_STATE_COOKIE, encodeOAuthState } from "@shared/const";
 
 export { COOKIE_NAME, ONE_YEAR_MS } from "@shared/const";
+export const OAUTH_LOGIN_TIMEOUT_MS = 45_000;
 
 // Start the Manus OAuth login. Call this from an event handler or effect at the
 // moment you want to navigate, e.g. `onClick={() => startLogin()}`.
@@ -20,18 +21,23 @@ export const buildOAuthLoginUrl = (oauthPortalUrl: string, appId: string, redire
   return url.toString();
 };
 
-export const startLogin = () => {
+export const createOAuthLoginUrl = () => {
   const oauthPortalUrl = import.meta.env.VITE_OAUTH_PORTAL_URL;
   const appId = import.meta.env.VITE_APP_ID;
   const redirectUri = `${window.location.origin}/api/oauth/callback`;
 
   if (!oauthPortalUrl || !appId) {
     console.error("[OAuth] Missing VITE_OAUTH_PORTAL_URL or VITE_APP_ID");
-    return;
+    return null;
   }
 
   const nonce = crypto.randomUUID();
   document.cookie = `${OAUTH_STATE_COOKIE}=${nonce}; Path=/; Max-Age=600; SameSite=None; Secure`;
   const state = encodeOAuthState({ redirectUri, nonce });
-  window.location.href = buildOAuthLoginUrl(oauthPortalUrl, appId, redirectUri, state);
+  return buildOAuthLoginUrl(oauthPortalUrl, appId, redirectUri, state);
+};
+
+export const startLogin = () => {
+  const url = createOAuthLoginUrl();
+  if (url) window.location.href = url;
 };

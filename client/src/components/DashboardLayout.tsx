@@ -2,9 +2,9 @@ import { useAuth } from "@/_core/hooks/useAuth";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Sidebar, SidebarContent, SidebarFooter, SidebarHeader, SidebarInset, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarProvider, SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
-import { startLogin } from "@/const";
 import { useIsMobile } from "@/hooks/useMobile";
-import { Boxes, ChartNoAxesCombined, CircleHelp, Files, LayoutDashboard, LogOut, PanelLeft, Settings2, ShieldCheck } from "lucide-react";
+import { getLoginButtonLabel, isLoginPending, isLoginRetryable } from "@/lib/oauthLoginState";
+import { Boxes, ChartNoAxesCombined, CircleHelp, Files, LayoutDashboard, Loader2, LogOut, PanelLeft, Settings2, ShieldCheck } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from "./DashboardLayoutSkeleton";
@@ -27,7 +27,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     const saved = localStorage.getItem(SIDEBAR_WIDTH_KEY);
     return saved ? parseInt(saved, 10) : DEFAULT_WIDTH;
   });
-  const { loading, user } = useAuth();
+  const { loading, user, loginStatus, beginLogin, retryLogin } = useAuth();
 
   useEffect(() => { localStorage.setItem(SIDEBAR_WIDTH_KEY, sidebarWidth.toString()); }, [sidebarWidth]);
 
@@ -43,7 +43,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <p className="mono mb-3 text-[11px] uppercase tracking-[0.18em] text-[#9daa98]">private game infrastructure</p>
           <h1 className="display-title mb-5 max-w-xs">Твои миры.<br /><span className="text-[#c5ff3f]">Под твоим контролем.</span></h1>
           <p className="mb-8 text-sm leading-6 text-[#aab6a7]">Войди, чтобы управлять серверами, конфигурациями и резервными копиями из одного спокойного рабочего пространства.</p>
-          <Button onClick={() => startLogin()} className="h-12 w-full rounded-xl bg-[#c5ff3f] text-[#151a16] font-semibold hover:bg-[#d7ff76]">Войти в CraftPanel</Button>
+          <Button onClick={isLoginRetryable(loginStatus) ? retryLogin : beginLogin} disabled={isLoginPending(loginStatus)} className="h-12 w-full rounded-xl bg-[#c5ff3f] text-[#151a16] font-semibold hover:bg-[#d7ff76] disabled:cursor-wait disabled:opacity-80">
+            {isLoginPending(loginStatus) && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            {getLoginButtonLabel(loginStatus)}
+          </Button>
+          {loginStatus === "waiting" && <p role="status" className="mt-3 text-center text-xs leading-5 text-[#aab6a7]">Подтвердите вход в окне Manus. Если окно не открылось, разрешите всплывающие окна.</p>}
+          {loginStatus === "timed_out" && <p role="alert" className="mt-3 text-center text-xs leading-5 text-[#ffb4be]">Время ожидания истекло. Проверьте окно Manus и попробуйте ещё раз.</p>}
+          {loginStatus === "error" && <p role="alert" className="mt-3 text-center text-xs leading-5 text-[#ffb4be]">Не удалось открыть OAuth. Попробуйте ещё раз.</p>}
           <div className="mt-6 flex items-center gap-2 text-xs text-[#839180]"><ShieldCheck className="h-4 w-4 text-[#c5ff3f]" /> Доступ защищён OAuth-аутентификацией</div>
         </div>
       </div>
