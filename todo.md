@@ -126,3 +126,22 @@
 - [x] Re-test authenticated redirect, route state, and production build
 - [x] Verify OAuth end-to-end in browser and confirm successful navigation to /servers, or document the external browser limitation
 - [x] Add a focused regression test for popup-close/auth.me polling race
+- [x] Add OAuth session diagnostics page with session, cookie, callback, and error-state checks
+- [x] Show explicit successful-login notification before navigating to /servers
+- [x] Add dedicated /servers management workspace with expanded server list and filters
+- [x] Add tests, visual verification, and production build for the new auth and server workspace flows
+- [x] Replace Manus OAuth with a user-selected external authentication method
+- [x] Preserve secure session, logout, protected routes, and OAuth diagnostics compatibility for the replacement auth flow
+- [x] Implement email/password registration and login with hashed credentials
+- [x] Implement Discord OAuth authorization, callback, and account linking
+- [x] Replace Manus login UI with Discord and email auth options
+- [x] Add required Discord secrets and auth configuration documentation
+- [x] Add schema migration, regression tests, visual verification, and deployment validation for both auth methods
+- [x] Remove or explicitly disable legacy Manus OAuth routes from the running Express app
+- [x] Make OAuth diagnostics use real server-side session and Discord-state signals
+- [x] Route Discord callback through an intermediate success page before /servers
+- [x] Add regression coverage for Discord success redirect and diagnostics response
+- [x] Save and publish a checkpoint for the Discord + email auth rewrite, then verify the live build uses the new auth flow
+- [x] Capture final visual verification for the updated login screen, /auth/success, /diagnostics/oauth, and /servers after the final auth pass
+- [ ] Save a new checkpoint after the Discord + email auth rewrite and verify the published/live build uses the new auth flow
+- [ ] Capture final screenshots for the updated login screen (/), /auth/success, /diagnostics/oauth, and the authenticated /servers workspace

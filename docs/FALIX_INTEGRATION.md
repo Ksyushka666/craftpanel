@@ -25,12 +25,12 @@ The verified server for this project is Falix server `3409521`, currently report
 | `FALIX_API_KEY` | Render/WebDev server secret | Bearer credential for Falix API v2; never expose to browser |
 | `FALIX_SERVER_ID` | Render/WebDev server variable | Single external Falix server fallback |
 | `FALIX_SERVER_MAP` | Render/WebDev server variable (optional) | JSON mapping from local CraftPanel server IDs to Falix server IDs |
-| `VITE_OAUTH_PORTAL_URL`, `VITE_APP_ID` and related Manus variables | Platform-managed | Existing CraftPanel OAuth; custom domain callback uses the browser origin and requires no hardcoded provider URL |
-| Built-in storage variables | Platform-managed | Existing S3-compatible Manus storage for panel artifacts and backups |
+| `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET` | Render/WebDev server secrets | Discord authorization-code exchange; never expose to browser |
+| Built-in storage variables | Platform-managed | S3-compatible storage for panel artifacts and backups |
 
 ## Custom OAuth domain and storage policy
 
-No custom domain was supplied, so the current deployment uses the Render/Manus origin and the existing nonce-protected Manus OAuth flow. If a custom panel domain is later attached, the OAuth redirect URI must remain `${window.location.origin}/api/oauth/callback`; update the OAuth application's allowed redirect list to include that exact HTTPS origin. Do not hardcode a domain in server code.
+Discord OAuth uses the current panel origin for its callback: `${window.location.origin}/api/auth/discord/callback`. If a custom panel domain is later attached, add that exact HTTPS callback URL to the Discord Developer Portal. Email/password sessions use the same signed, httpOnly CraftPanel cookie and need no external callback. Do not hardcode a domain in server code.
 
 Panel-owned backup artifacts continue to use the built-in S3-compatible storage helper. Store only object keys and metadata in TiDB, keep objects owner-scoped, and do not place runtime API keys or raw world archives in GitHub. A production multi-admin rollout should add explicit team membership and per-server permissions before inviting additional operators; the current app remains owner-scoped.
 

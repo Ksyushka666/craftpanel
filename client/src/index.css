@@ -139,6 +139,11 @@
 @media (min-width: 640px) { .container { padding-left: 1.5rem; padding-right: 1.5rem; } }
 @media (min-width: 1024px) { .container { padding-left: 2rem; padding-right: 2rem; max-width: 1440px; } }
 
+@keyframes progress {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+
 @keyframes upload-success-pop {
   0% { opacity: 0; transform: translateY(6px) scale(.96); }
   70% { opacity: 1; transform: translateY(0) scale(1.02); }
@@ -148,5 +153,5 @@
 .upload-success { animation: upload-success-pop 420ms cubic-bezier(.23, 1, .32, 1) both; }
 
 @media (prefers-reduced-motion: reduce) {
-  .upload-success { animation: none; }
+  .upload-success, .animate-\[progress_1\.4s_linear\] { animation: none; }
 }

@@ -2,6 +2,6 @@
 
 - Production route opened: `https://craftpanel-7d9t.onrender.com/servers`.
 - Unauthenticated state correctly rendered the CraftPanel login screen.
-- Clicking the app login button opened the canonical Manus login URL: `https://manus.im/login?app_id=...&redirect_url=https%3A%2F%2Fcraftpanel-7d9t.onrender.com%2Fapi%2Foauth%2Fcallback&state=...`.
-- The `state` parameter contained the Render callback URL and a nonce, confirming the browser is using the current production origin rather than a hardcoded local/preview URL.
-- Provider authentication was not completed because the user cannot take over the browser and no personal account input was supplied. End-to-end post-auth navigation remains externally blocked; code-level coverage now targets `/servers` callback redirect and popup-close/auth.me polling race.
+- Clicking the Discord login button opens the Discord authorization-code flow through `/api/auth/discord/start`; the server constructs `https://discord.com/oauth2/authorize` with a nonce-protected state cookie and the current Render callback URL.
+- The callback is `https://craftpanel-7d9t.onrender.com/api/auth/discord/callback`. After successful code exchange, the server redirects to `/auth/success?provider=discord`, shows an explicit success screen, and only then navigates to `/servers`.
+- External Discord account authentication was not completed automatically because browser takeover and personal account input were unavailable. Local endpoint contracts, state rejection, diagnostics-without-session, success redirect, 63 Vitest tests, typecheck, and production build were verified.

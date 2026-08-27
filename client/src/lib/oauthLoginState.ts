@@ -1,16 +1,14 @@
-export type LoginStatus = "idle" | "starting" | "waiting" | "timed_out" | "error";
+export type LoginStatus = "idle" | "starting" | "error" | "success";
 
-export const isLoginPending = (status: LoginStatus) => status === "starting" || status === "waiting";
-export const isLoginRetryable = (status: LoginStatus) => status === "timed_out" || status === "error";
+export const AUTH_SUCCESS_TOAST_KEY = "craftpanel-auth-success-toast";
+export const isLoginPending = (status: LoginStatus) => status === "starting";
+export const isLoginRetryable = (status: LoginStatus) => status === "error";
 
 export const getLoginButtonLabel = (status: LoginStatus) =>
-  isLoginRetryable(status)
-    ? "Повторить вход"
-    : isLoginPending(status)
-      ? "Ожидаем подтверждение…"
-      : "Войти в CraftPanel";
-
-export type AuthPollResult = "authenticated" | "closed" | "continue";
-
-export const getAuthPollResult = (hasUser: boolean, popupClosed: boolean): AuthPollResult =>
-  hasUser ? "authenticated" : popupClosed ? "closed" : "continue";
+  status === "success"
+    ? "Вход выполнен"
+    : isLoginRetryable(status)
+      ? "Повторить вход"
+      : isLoginPending(status)
+        ? "Проверяем данные…"
+        : "Войти";

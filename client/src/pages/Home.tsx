@@ -2638,7 +2638,7 @@ function SettingsView({ userName, server }: { userName: string; server?: Server 
       {server ? (
         <>
           <Card className="rounded-[24px] border-[#dfe2d6] bg-[#fffdf7] panel-shadow dark:border-white/10 dark:bg-[#171f19]">
-            <CardHeader><CardTitle className="text-base">Команда сервера</CardTitle><p className="text-xs text-[#899386]">Владелец может назначить администратора, оператора или наблюдателя по ID пользователя Manus.</p></CardHeader>
+            <CardHeader><CardTitle className="text-base">Команда сервера</CardTitle><p className="text-xs text-[#899386]">Владелец может назначить администратора, оператора или наблюдателя по ID пользователя CraftPanel.</p></CardHeader>
             <CardContent className="space-y-3">
               <div className="flex flex-col gap-2 sm:flex-row">
                 <Input value={memberUserId} onChange={event => setMemberUserId(event.target.value)} placeholder="ID пользователя" className="h-10 rounded-lg bg-[#f7f6ef] dark:bg-[#202a21]" />

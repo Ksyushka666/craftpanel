@@ -2,7 +2,7 @@
 
 ## 1. Подготовка
 
-Установи Node.js 20 или новее, pnpm 10 и MySQL 8 / TiDB. Создай локальную базу и подготовь OAuth application для Manus. Значения секретов храни только в `.env` или в менеджере секретов окружения.
+Установи Node.js 20 или новее, pnpm 10 и MySQL 8 / TiDB. Создай локальную базу. Для Discord OAuth создай Discord Developer Application и добавь redirect URI `http://localhost:3000/api/auth/discord/callback`. Значения `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET` и `JWT_SECRET` храни только в `.env` или в менеджере секретов окружения.
 
 ## 2. Установка
 
@@ -25,7 +25,7 @@ pnpm start
 
 ## 3. Как работает доступ
 
-Пользователь проходит Manus OAuth. Все feature procedures используют `protectedProcedure`. Внутри database helper owner id берётся из `ctx.user.id`, а запросы к серверам, журналу действий и бэкапам используют совместное условие `resourceId + ownerId`. Клиентские формы никогда не получают возможность указать произвольный owner id.
+Пользователь может войти через Discord OAuth или зарегистрироваться по email и паролю. Пароли хешируются scrypt и не сохраняются в открытом виде. Все feature procedures используют `protectedProcedure`. Внутри database helper owner id берётся из `ctx.user.id`, а запросы к серверам, журналу действий и бэкапам используют совместное условие `resourceId + ownerId`. Клиентские формы никогда не получают возможность указать произвольный owner id.
 
 ## 4. Подключение реального Minecraft runtime
 

@@ -53,7 +53,7 @@ export async function upsertUser(user: InsertUser): Promise<void> {
 
   const values: InsertUser = { openId: user.openId };
   const updateSet: Record<string, unknown> = {};
-  const textFields = ["name", "email", "loginMethod"] as const;
+  const textFields = ["name", "email", "loginMethod", "passwordHash", "discordId"] as const;
   for (const field of textFields) {
     if (user[field] !== undefined) {
       values[field] = user[field] ?? null;
@@ -80,6 +80,56 @@ export async function getUserByOpenId(openId: string) {
   const db = await getDb();
   if (!db) return undefined;
   const result = await db.select().from(users).where(eq(users.openId, openId)).limit(1);
+  return result[0];
+}
+
+export async function getUserByEmail(email: string) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(users).where(eq(users.email, email)).limit(1);
+  return result[0];
+}
+
+export async function getUserByDiscordId(discordId: string) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(users).where(eq(users.discordId, discordId)).limit(1);
+  return result[0];
+}
+
+export async function createLocalAuthUser(input: {
+  name: string;
+  email: string;
+  passwordHash?: string;
+  discordId?: string;
+  loginMethod: "email" | "discord";
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database is not available");
+  const openId = `${input.loginMethod}_${randomBytes(16).toString("hex")}`;
+  await db.insert(users).values({
+    openId,
+    name: input.name,
+    email: input.email,
+    passwordHash: input.passwordHash,
+    discordId: input.discordId,
+    loginMethod: input.loginMethod,
+    lastSignedIn: new Date(),
+  });
+  return getUserByOpenId(openId);
+}
+
+export async function updateUserAuthIdentity(userId: number, input: {
+  name?: string;
+  email?: string | null;
+  passwordHash?: string | null;
+  discordId?: string | null;
+  loginMethod?: "email" | "discord";
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database is not available");
+  await db.update(users).set({ ...input, lastSignedIn: new Date() }).where(eq(users.id, userId));
+  const result = await db.select().from(users).where(eq(users.id, userId)).limit(1);
   return result[0];
 }
 

@@ -4,7 +4,7 @@ import { decodeOAuthState, encodeOAuthState } from "@shared/const";
 
 describe("OAuth callback contracts", () => {
   it("uses the server workspace as the post-login destination", () => {
-    expect(OAUTH_SUCCESS_REDIRECT_PATH).toBe("/servers");
+    expect(OAUTH_SUCCESS_REDIRECT_PATH).toBe("/auth/success?provider=discord");
   });
 
   it("always resolves a non-empty session name", () => {

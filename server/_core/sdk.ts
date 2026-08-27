@@ -18,6 +18,8 @@ import type {
 const isNonEmptyString = (value: unknown): value is string =>
   typeof value === "string" && value.length > 0;
 
+export const LOCAL_SESSION_APP_ID = "craftpanel-local";
+
 export type SessionPayload = {
   openId: string;
   appId: string;
@@ -283,6 +285,10 @@ class SDKServer {
         throw ForbiddenError("Cron session missing task_uid");
       }
       return buildCronUser(userInfo);
+    }
+
+    if (session.appId !== LOCAL_SESSION_APP_ID) {
+      throw ForbiddenError("Legacy external OAuth sessions are disabled");
     }
 
     const sessionUserId = session.openId;

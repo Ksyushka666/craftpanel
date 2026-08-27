@@ -21,7 +21,7 @@ Railway project token должен быть ограничен конкретн�
 
 ## Переменные приложения
 
-Для полноценной авторизации и базы данных добавь в настройках выбранного провайдера runtime variables из `.env.example` или README проекта: `DATABASE_URL`, `JWT_SECRET`, OAuth variables Manus и storage variables. Не добавляй эти значения в GitHub Actions workflow и не коммить `.env`.
+Для полноценной авторизации и базы данных добавь в настройках выбранного провайдера runtime variables из `.env.example` или README проекта: `DATABASE_URL`, `JWT_SECRET`, `DISCORD_CLIENT_ID` и `DISCORD_CLIENT_SECRET`. Email/password вход использует базу данных и отдельные секреты не требует. В Discord Developer Portal добавь redirect URI `https://<твой-домен>/api/auth/discord/callback`. Не добавляй эти значения в GitHub Actions workflow и не коммить `.env`.
 
 ## Sources
 
@@ -29,14 +29,14 @@ Railway project token должен быть ограничен конкретн�
 
 ## Текущий статус проверки
 
-Workflow-файлы, YAML, build, typecheck и тесты проверены локально. Render Web Service создан и проверен через авторизованную Render-сессию; Deploy Hook сохранён в GitHub Actions secrets. Для повторного запуска достаточно выполнить push в `main` или запустить workflow вручную.
+Workflow-файлы, YAML, build, typecheck и тесты проверены локально. Render Web Service создан и проверен через авторизованную Render-сессию; Deploy Hook сохранён в GitHub Actions secrets. Discord credentials должны быть добавлены в Render environment, а для повторного запуска достаточно выполнить push в `main` или запустить workflow вручную.
 
 ## Render service status
 
 A Render Web Service named `craftpanel` was created from `Ksyushka666/craftpanel` on the Free plan in Oregon. Render assigned the public URL `https://craftpanel-7d9t.onrender.com` and service ID `srv-da7ufrid0e5s739s4ivg`. The service is connected to the repository branch `main`; the current live deployment uses commit `a62a2d4`. The Render Deploy Hook was saved to the repository Actions secrets through GitHub Settings.
 
-The assigned public URL is `https://craftpanel-7d9t.onrender.com`. A direct public request returns the CraftPanel login page with the Russian-language product shell and OAuth entry point. Render logs show a successful build and the production start command running.
+The assigned public URL is `https://craftpanel-7d9t.onrender.com`. A direct public request returns the CraftPanel login page with the Russian-language product shell and Discord/email authentication entry points. Render logs show a successful build and the production start command running.
 
 ## Current integration result
 
-Render service creation completed successfully on the Free plan. The live deployment uses TiDB Cloud through `DATABASE_URL` with `DATABASE_SSL=true`; `JWT_SECRET` and the application title are configured in Render environment variables. The application uses the platform-provided Manus OAuth and storage integration variables already injected by the project runtime, so no separate external OAuth or storage credentials are required for the current architecture. `RENDER_DEPLOY_HOOK_URL` is stored as a GitHub Actions secret and is not present in source control.
+Render service creation completed successfully on the Free plan. The live deployment uses TiDB Cloud through `DATABASE_URL` with `DATABASE_SSL=true`; `JWT_SECRET` and the application title are configured in Render environment variables. The application uses Discord OAuth for social login and local scrypt-hashed credentials for email/password login. Configure `DISCORD_CLIENT_ID` and `DISCORD_CLIENT_SECRET` on the hosting provider; storage variables remain platform-managed. `RENDER_DEPLOY_HOOK_URL` is stored as a GitHub Actions secret and is not present in source control.

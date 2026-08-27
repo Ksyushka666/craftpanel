@@ -11,10 +11,21 @@ import { toast } from "sonner";
 import ErrorBoundary from "./components/ErrorBoundary";
 import DashboardLayout from "./components/DashboardLayout";
 import { ThemeProvider } from "./contexts/ThemeContext";
-import Home from "./pages/Home";
+import Home from "@/pages/Home";
+import Servers from "@/pages/Servers";
+import OAuthDiagnostics from "@/pages/OAuthDiagnostics";
+import AuthSuccess from "@/pages/AuthSuccess";
 
 function DashboardRoute() {
   return <DashboardLayout><Home /></DashboardLayout>;
+}
+
+function ServersRoute() {
+  return <DashboardLayout><Servers /></DashboardLayout>;
+}
+
+function OAuthDiagnosticsRoute() {
+  return <OAuthDiagnostics />;
 }
 
 function InvitationRoute() {
@@ -27,7 +38,9 @@ function InvitationRoute() {
 function Router() {
   return <Switch>
     <Route path="/" component={DashboardRoute} />
-    <Route path="/servers" component={DashboardRoute} />
+    <Route path="/servers" component={ServersRoute} />
+    <Route path="/diagnostics/oauth" component={OAuthDiagnosticsRoute} />
+    <Route path="/auth/success" component={AuthSuccess} />
     <Route path="/library" component={DashboardRoute} />
     <Route path="/backups" component={DashboardRoute} />
     <Route path="/files" component={DashboardRoute} />

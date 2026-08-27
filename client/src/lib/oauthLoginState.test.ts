@@ -1,28 +1,22 @@
 import { describe, expect, it } from "vitest";
-import { getAuthPollResult, getLoginButtonLabel, isLoginPending, isLoginRetryable } from "./oauthLoginState";
+import { getLoginButtonLabel, isLoginPending, isLoginRetryable } from "./oauthLoginState";
 
-describe("OAuth login UI states", () => {
-  it("disables login while waiting for the popup", () => {
+describe("local authentication UI states", () => {
+  it("disables the auth actions while credentials are being checked", () => {
     expect(isLoginPending("starting")).toBe(true);
-    expect(isLoginPending("waiting")).toBe(true);
     expect(isLoginPending("idle")).toBe(false);
+    expect(isLoginPending("success")).toBe(false);
   });
 
-  it("offers retry after timeout or launch error", () => {
-    expect(isLoginRetryable("timed_out")).toBe(true);
+  it("offers retry after a failed auth request", () => {
     expect(isLoginRetryable("error")).toBe(true);
-    expect(getLoginButtonLabel("timed_out")).toBe("Повторить вход");
+    expect(isLoginRetryable("idle")).toBe(false);
     expect(getLoginButtonLabel("error")).toBe("Повторить вход");
   });
 
-  it("accepts a session even when the OAuth popup has already closed", () => {
-    expect(getAuthPollResult(true, true)).toBe("authenticated");
-    expect(getAuthPollResult(false, true)).toBe("closed");
-    expect(getAuthPollResult(false, false)).toBe("continue");
-  });
-
-  it("keeps the normal label for idle and waiting states", () => {
-    expect(getLoginButtonLabel("idle")).toBe("Войти в CraftPanel");
-    expect(getLoginButtonLabel("waiting")).toBe("Ожидаем подтверждение…");
+  it("shows explicit labels for idle, pending, and success states", () => {
+    expect(getLoginButtonLabel("idle")).toBe("Войти");
+    expect(getLoginButtonLabel("starting")).toBe("Проверяем данные…");
+    expect(getLoginButtonLabel("success")).toBe("Вход выполнен");
   });
 });

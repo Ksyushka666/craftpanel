@@ -6,12 +6,16 @@ export const users = mysqlTable("users", {
   openId: varchar("openId", { length: 64 }).notNull().unique(),
   name: text("name"),
   email: varchar("email", { length: 320 }),
+  passwordHash: varchar("passwordHash", { length: 255 }),
+  discordId: varchar("discordId", { length: 64 }),
   loginMethod: varchar("loginMethod", { length: 64 }),
   role: mysqlEnum("role", ["user", "admin"]).default("user").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
   lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),
-});
+}, table => ({
+  discordIdentity: uniqueIndex("users_discord_id_unique").on(table.discordId),
+}));
 
 export const minecraftServers = mysqlTable("minecraft_servers", {
   id: int("id").autoincrement().primaryKey(),

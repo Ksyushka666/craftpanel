@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { COOKIE_NAME } from "@shared/const";
+import { TRPCError } from "@trpc/server";
 import { parse as parseCookie } from "cookie";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
@@ -46,6 +47,7 @@ import {
   recordAuditLog,
 } from "./db";
 import { createHeartbeatJob, updateHeartbeatJob, deleteHeartbeatJob } from "./_core/heartbeat";
+import { authenticateEmailAccount, getAuthDiagnostics, registerEmailAccount, setLocalSessionCookie, toSafeUser } from "./customAuth";
 import {
   falixCreateDownload,
   falixCreateWebhook,
@@ -117,7 +119,26 @@ async function syncFalixServer(ownerId: number, localServerId: number) {
 export const appRouter = router({
   system: systemRouter,
     auth: router({
-    me: publicProcedure.query(opts => opts.ctx.user),
+    me: publicProcedure.query(opts => toSafeUser(opts.ctx.user)),
+    diagnostics: publicProcedure.query(({ ctx }) => getAuthDiagnostics(ctx.req)),
+    registerEmail: publicProcedure.input(z.object({ name: z.string().trim().min(1).max(120), email: z.string().email(), password: z.string().min(8).max(128) })).mutation(async ({ ctx, input }) => {
+      try {
+        const user = await registerEmailAccount(input);
+        await setLocalSessionCookie(ctx.req, ctx.res, user);
+        return toSafeUser(user);
+      } catch (error) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: error instanceof Error ? error.message : "Не удалось зарегистрироваться" });
+      }
+    }),
+    loginEmail: publicProcedure.input(z.object({ email: z.string().email(), password: z.string().min(1).max(128) })).mutation(async ({ ctx, input }) => {
+      try {
+        const user = await authenticateEmailAccount(input);
+        await setLocalSessionCookie(ctx.req, ctx.res, user);
+        return toSafeUser(user);
+      } catch (error) {
+        throw new TRPCError({ code: "UNAUTHORIZED", message: error instanceof Error ? error.message : "Неверный email или пароль" });
+      }
+    }),
     acceptInvitation: protectedProcedure.input(z.object({ token: z.string().regex(/^[a-f0-9]{64}$/), email: z.string().email() })).mutation(({ ctx, input }) => acceptServerInvitation(input.token, ctx.user.id, input.email)),
     logout: publicProcedure.mutation(({ ctx }) => {
       const cookieOptions = getSessionCookieOptions(ctx.req);
