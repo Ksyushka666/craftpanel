@@ -44,14 +44,16 @@
 - [x] Record the active-server visual verification evidence
 - [x] Add realtime CPU, RAM, and player-count chart widget
 - [x] Define metric polling/history behavior and empty/loading states
-- [ ] Prepare Render Service deployment setup and RENDER_DEPLOY_HOOK_URL secret contract
+- [x] Prepare Render Service deployment setup and RENDER_DEPLOY_HOOK_URL secret contract
 - [ ] Define external MySQL, OAuth, storage, and production environment configuration
 - [x] Verify charts, deployment workflow, documentation, and tests
 - [x] Add pure metric-history helper with unit tests for rolling points and RAM percentage
 - [x] Document realtime chart polling and retention behavior in README
 - [x] Confirm metrics.test.ts discovery and passing execution in Vitest output
 - [x] Record Render workflow as YAML/build validated but E2E pending authenticated Render access
-- [ ] Add explicit DATABASE_SSL/TiDB TLS handling for production Render connection
-- [ ] Add Render DATABASE_URL and generated JWT_SECRET after TLS configuration is deployed
-- [ ] Commit and push TiDB TLS handling and current production fixes to GitHub
-- [ ] Confirm Render rebuild uses the new commit and reaches Live
+- [x] Add explicit DATABASE_SSL/TiDB TLS handling for production Render connection
+- [x] Add Render DATABASE_URL and generated JWT_SECRET after TLS configuration is deployed
+- [x] Commit and push TiDB TLS handling and current production fixes to GitHub
+- [x] Confirm Render rebuild uses the new commit and reaches Live
+- [ ] Configure and document exact production OAuth and storage environment variables on Render, or explicitly record why built-in values are intentionally used
+- [ ] Reconcile docs/EXTERNAL_DEPLOY.md with the actual Render environment state

@@ -29,14 +29,14 @@ Railway project token должен быть ограничен конкретн�
 
 ## Текущий статус проверки
 
-Workflow-файлы, YAML, build, typecheck и тесты проверены локально. Фактический Render Web Service и первый E2E вызов Deploy Hook требуют авторизованной Render-сессии и значения `RENDER_DEPLOY_HOOK_URL`; без них репозиторий не делает неподтверждённых внешних запросов. После создания сервиса достаточно добавить secret и выполнить push в `main` или запустить workflow вручную.
+Workflow-файлы, YAML, build, typecheck и тесты проверены локально. Render Web Service создан и проверен через авторизованную Render-сессию; Deploy Hook сохранён в GitHub Actions secrets. Для повторного запуска достаточно выполнить push в `main` или запустить workflow вручную.
 
 ## Render service status
 
-A Render Web Service named `craftpanel` was created from `Ksyushka666/craftpanel` on the Free plan in Oregon. Render assigned the public URL `https://craftpanel-7d9t.onrender.com` and service ID `srv-da7ufrid0e5s739s4ivg`. The first deploy was triggered from commit `84002e0`. The Render Deploy Hook was retrieved from the service settings, but the configured GitHub CLI integration returned HTTP 403 while fetching the repository Actions secrets public key, so the repository secret must be added through GitHub Settings in the browser or with a token that has repository Actions administration permission.
+A Render Web Service named `craftpanel` was created from `Ksyushka666/craftpanel` on the Free plan in Oregon. Render assigned the public URL `https://craftpanel-7d9t.onrender.com` and service ID `srv-da7ufrid0e5s739s4ivg`. The service is connected to the repository branch `main`; the current live deployment uses commit `a62a2d4`. The Render Deploy Hook was saved to the repository Actions secrets through GitHub Settings.
 
-The assigned public URL is `https://craftpanel-7d9t.onrender.com`. A direct public request currently returns Render's `Application loading` / `START BUILDING ON RENDER TODAY` page rather than the CraftPanel UI, so the service logs and start configuration must be checked before considering the external deployment healthy.
+The assigned public URL is `https://craftpanel-7d9t.onrender.com`. A direct public request returns the CraftPanel login page with the Russian-language product shell and OAuth entry point. Render logs show a successful build and the production start command running.
 
 ## Current integration result
 
-Render service creation completed successfully on the Free plan. Render reports the first deployment as live and exposes `https://craftpanel-7d9t.onrender.com`. Repository secret `RENDER_DEPLOY_HOOK_URL` was added successfully through GitHub Settings after the GitHub CLI integration returned a 403 for the Actions public-key API. External `DATABASE_URL`, Manus OAuth values, and storage values are still not configured because no provider credentials were supplied; the deployment guide keeps these values out of source control.
+Render service creation completed successfully on the Free plan. The live deployment uses TiDB Cloud through `DATABASE_URL` with `DATABASE_SSL=true`; `JWT_SECRET` and the application title are configured in Render environment variables. The application uses the platform-provided Manus OAuth and storage integration variables already injected by the project runtime, so no separate external OAuth or storage credentials are required for the current architecture. `RENDER_DEPLOY_HOOK_URL` is stored as a GitHub Actions secret and is not present in source control.
