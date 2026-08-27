@@ -83,7 +83,7 @@
 - [x] Add scheduler callback handlers under /api/scheduled with task UID ownership
 - [x] Add admin UI for roles, webhook registration, and schedules
 - [x] Add Vitest coverage for upload/editor boundaries, webhook verification, and permission-aware routes
-- [ ] Run full validation and publish the automation/admin checkpoint
+- [x] Run full validation and publish the automation/admin checkpoint
 - [x] Use collision-safe raw-body hash and provider delivery identity for webhook idempotency
 - [x] Include shared server memberships in servers.list and test admin/operator/viewer visibility
 - [x] Support both cookie and Authorization-header sessions for Heartbeat schedule management
