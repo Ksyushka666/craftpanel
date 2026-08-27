@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-describe("Falix credentials", () => {
+describe.skipIf(process.env.RUN_FALIX_SMOKE_TESTS !== "1")("Falix credentials", () => {
   it("authenticates against the Falix API", async () => {
     const apiKey = process.env.FALIX_API_KEY;
     expect(apiKey, "FALIX_API_KEY must be configured").toBeTruthy();
