@@ -13,17 +13,21 @@ export type FalixStatus = {
   };
 };
 
-function getFalixConfig() {
+function getFalixConfig(localServerId?: number) {
   const apiKey = process.env.FALIX_API_KEY;
-  const serverId = Number(process.env.FALIX_SERVER_ID);
+  let serverId = Number(process.env.FALIX_SERVER_ID);
+  try {
+    const mapping = JSON.parse(process.env.FALIX_SERVER_MAP ?? "{}") as Record<string, number>;
+    if (localServerId !== undefined && Number.isInteger(mapping[String(localServerId)])) serverId = Number(mapping[String(localServerId)]);
+  } catch { /* use the single-server fallback */ }
   if (!apiKey || !Number.isInteger(serverId) || serverId <= 0) {
     throw new Error("Falix provider is not configured; set FALIX_API_KEY and FALIX_SERVER_ID");
   }
   return { apiKey, serverId };
 }
 
-async function falixRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const { apiKey } = getFalixConfig();
+async function falixRequest<T>(path: string, init: RequestInit = {}, localServerId?: number): Promise<T> {
+  const { apiKey } = getFalixConfig(localServerId);
   const headers = new Headers(init.headers);
   headers.set("Authorization", `Bearer ${apiKey}`);
   headers.set("Accept", "application/json");
@@ -40,18 +44,18 @@ async function falixRequest<T>(path: string, init: RequestInit = {}): Promise<T>
   return (payload as { data?: T })?.data as T;
 }
 
-export async function falixGetServerDetails() {
-  const { serverId } = getFalixConfig();
+export async function falixGetServerDetails(localServerId?: number) {
+  const { serverId } = getFalixConfig(localServerId);
   return falixRequest<{ allocation?: { ip?: string; port?: number; hostname?: string }; software?: { name?: string; version?: string } }>(`/servers/${serverId}`);
 }
 
-export async function falixGetStatus(): Promise<FalixStatus> {
-  const { serverId } = getFalixConfig();
+export async function falixGetStatus(localServerId?: number): Promise<FalixStatus> {
+  const { serverId } = getFalixConfig(localServerId);
   return falixRequest<FalixStatus>(`/servers/${serverId}/status`);
 }
 
-export async function falixSendPower(signal: FalixPowerSignal) {
-  const { serverId } = getFalixConfig();
+export async function falixSendPower(signal: FalixPowerSignal, localServerId?: number) {
+  const { serverId } = getFalixConfig(localServerId);
   return falixRequest<{ state?: string; message?: string }>(`/servers/${serverId}/power`, {
     method: "POST",
     headers: { "Idempotency-Key": `craftpanel-${serverId}-${signal}-${Date.now()}` },
@@ -59,13 +63,13 @@ export async function falixSendPower(signal: FalixPowerSignal) {
   });
 }
 
-export async function falixGetMonitor() {
-  const { serverId } = getFalixConfig();
+export async function falixGetMonitor(localServerId?: number) {
+  const { serverId } = getFalixConfig(localServerId);
   return falixRequest<unknown>(`/servers/${serverId}/monitor/data?range=15m&view=metrics`);
 }
 
-export async function falixGetOnlinePlayers() {
-  const { serverId } = getFalixConfig();
+export async function falixGetOnlinePlayers(localServerId?: number) {
+  const { serverId } = getFalixConfig(localServerId);
   return falixRequest<{ online_players?: number; player_names?: string[] }>(`/servers/${serverId}/players/online`);
 }
 
@@ -78,13 +82,13 @@ export type FalixFile = {
   modified_at: string;
 };
 
-export async function falixListFiles(path = "/"): Promise<FalixFile[]> {
-  const { serverId } = getFalixConfig();
+export async function falixListFiles(path = "/", localServerId?: number): Promise<FalixFile[]> {
+  const { serverId } = getFalixConfig(localServerId);
   return falixRequest<FalixFile[]>(`/servers/${serverId}/files?path=${encodeURIComponent(path)}`);
 }
 
-export async function falixWriteFile(path: string, content = "") {
-  const { serverId } = getFalixConfig();
+export async function falixWriteFile(path: string, content = "", localServerId?: number) {
+  const { serverId } = getFalixConfig(localServerId);
   return falixRequest<unknown>(`/servers/${serverId}/files/content`, {
     method: "PUT",
     headers: { "Idempotency-Key": `craftpanel-write-${serverId}-${Date.now()}` },
@@ -92,8 +96,8 @@ export async function falixWriteFile(path: string, content = "") {
   });
 }
 
-export async function falixCreateFolder(parentPath: string, name: string) {
-  const { serverId } = getFalixConfig();
+export async function falixCreateFolder(parentPath: string, name: string, localServerId?: number) {
+  const { serverId } = getFalixConfig(localServerId);
   return falixRequest<unknown>(`/servers/${serverId}/files/folder`, {
     method: "POST",
     headers: { "Idempotency-Key": `craftpanel-folder-${serverId}-${Date.now()}` },
@@ -101,8 +105,8 @@ export async function falixCreateFolder(parentPath: string, name: string) {
   });
 }
 
-export async function falixDeleteFiles(paths: string[]) {
-  const { serverId } = getFalixConfig();
+export async function falixDeleteFiles(paths: string[], localServerId?: number) {
+  const { serverId } = getFalixConfig(localServerId);
   return falixRequest<unknown>(`/servers/${serverId}/files/delete`, {
     method: "POST",
     headers: { "Idempotency-Key": `craftpanel-delete-${serverId}-${Date.now()}` },
@@ -110,21 +114,30 @@ export async function falixDeleteFiles(paths: string[]) {
   });
 }
 
-export async function falixReadFile(path: string) {
-  const { serverId } = getFalixConfig();
+export async function falixReadFile(path: string, localServerId?: number) {
+  const { serverId } = getFalixConfig(localServerId);
   return falixRequest<unknown>(`/servers/${serverId}/files/content?path=${encodeURIComponent(path)}`);
 }
 
-export async function falixCreateConsoleSession() {
-  const { serverId } = getFalixConfig();
+export async function falixCreateDownload(path: string, localServerId?: number) {
+  const { serverId } = getFalixConfig(localServerId);
+  return falixRequest<{ url?: string; expires_at?: string }>(`/servers/${serverId}/files/download`, {
+    method: "POST",
+    headers: { "Idempotency-Key": `craftpanel-download-${serverId}-${Date.now()}` },
+    body: JSON.stringify({ path }),
+  });
+}
+
+export async function falixCreateConsoleSession(localServerId?: number) {
+  const { serverId } = getFalixConfig(localServerId);
   return falixRequest<{ socket: string; token: string; permissions?: string[] }>(`/servers/${serverId}/console/token`, {
     method: "POST",
     headers: { "Idempotency-Key": `craftpanel-console-${serverId}-${Date.now()}` },
   });
 }
 
-export async function falixSendConsoleCommand(command: string): Promise<{ output: string[]; status?: string }> {
-  const session = await falixCreateConsoleSession();
+export async function falixSendConsoleCommand(command: string, localServerId?: number): Promise<{ output: string[]; status?: string }> {
+  const session = await falixCreateConsoleSession(localServerId);
   const WebSocketImpl = (globalThis as typeof globalThis & { WebSocket?: new (url: string) => any }).WebSocket;
   if (!WebSocketImpl) throw new Error("WebSocket runtime is unavailable");
   const socket = new WebSocketImpl(session.socket);
@@ -154,5 +167,5 @@ export async function falixSendConsoleCommand(command: string): Promise<{ output
 }
 
 export function falixIsConfigured() {
-  return Boolean(process.env.FALIX_API_KEY && Number(process.env.FALIX_SERVER_ID) > 0);
+  return Boolean(process.env.FALIX_API_KEY && (Number(process.env.FALIX_SERVER_ID) > 0 || process.env.FALIX_SERVER_MAP));
 }

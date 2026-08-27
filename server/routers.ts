@@ -28,6 +28,7 @@ import {
   updateOwnedServerTelemetry,
 } from "./db";
 import {
+  falixCreateDownload,
   falixCreateFolder,
   falixGetOnlinePlayers,
   falixGetServerDetails,
@@ -52,7 +53,7 @@ function mapFalixState(state: string | undefined): "online" | "offline" | "start
 
 async function syncFalixServer(ownerId: number, localServerId: number) {
   if (!falixIsConfigured()) return undefined;
-  const [details, status, players] = await Promise.all([falixGetServerDetails(), falixGetStatus(), falixGetOnlinePlayers().catch(() => undefined)]);
+  const [details, status, players] = await Promise.all([falixGetServerDetails(localServerId), falixGetStatus(localServerId), falixGetOnlinePlayers(localServerId).catch(() => undefined)]);
   const resources = status.resources;
   const allocation = details.allocation;
   const address = allocation?.hostname || (allocation?.ip && allocation?.port ? `${allocation.ip}:${allocation.port}` : undefined);
@@ -134,10 +135,10 @@ export const appRouter = router({
         let output: string;
         if (falixIsConfigured()) {
           if (input.action === "command") {
-            const result = await falixSendConsoleCommand(input.command!);
+            const result = await falixSendConsoleCommand(input.command!, input.id);
             output = result.output.join("\\n") || `Команда отправлена на Falix: ${input.command}`;
           } else {
-            await falixSendPower(input.action);
+            await falixSendPower(input.action, input.id);
             output = `Сигнал ${input.action} отправлен в Falix для ${server.name}`;
           }
           await syncFalixServer(ctx.user.id, input.id).catch(error => console.warn("[Falix] Post-action sync failed:", error));
@@ -182,7 +183,7 @@ export const appRouter = router({
         const localLogs = await getRecentServerLogs(ctx.user.id, input.id);
         if (!falixIsConfigured()) return localLogs;
         try {
-          const remote = await falixReadFile("/logs/latest.log") as { content?: string; text?: string } | string;
+          const remote = await falixReadFile("/logs/latest.log", input.id) as { content?: string; text?: string } | string;
           const content = typeof remote === "string" ? remote : remote?.content ?? remote?.text ?? "";
           const remoteLines = content.split(/\r?\n/).filter(Boolean).slice(-120).map((message, index) => ({
             id: -(index + 1),
@@ -253,7 +254,7 @@ export const appRouter = router({
           const server = await getOwnedServer(ctx.user.id, input.serverId);
           if (!server) throw new Error("Server not found");
           if (falixIsConfigured()) {
-            const remoteFiles = await falixListFiles(input.parentPath);
+            const remoteFiles = await falixListFiles(input.parentPath, input.serverId);
             return remoteFiles.map((file, index) => ({
               id: -(index + 1),
               ownerId: ctx.user.id,
@@ -269,6 +270,33 @@ export const appRouter = router({
           }
           return getOwnedFiles(ctx.user.id, input.serverId, input.parentPath);
         }),
+      read: protectedProcedure
+        .input(z.object({ serverId: z.number().int().positive(), path: z.string().min(1) }))
+        .query(async ({ ctx, input }) => {
+          const server = await getOwnedServer(ctx.user.id, input.serverId);
+          if (!server) throw new Error("Server not found");
+          if (!falixIsConfigured()) throw new Error("Remote file provider is not configured");
+          return falixReadFile(input.path, input.serverId);
+        }),
+      write: protectedProcedure
+        .input(z.object({ serverId: z.number().int().positive(), path: z.string().min(1), content: z.string().max(64 * 1024) }))
+        .mutation(async ({ ctx, input }) => {
+          const server = await getOwnedServer(ctx.user.id, input.serverId);
+          if (!server) throw new Error("Server not found");
+          if (!falixIsConfigured()) throw new Error("Remote file provider is not configured");
+          await falixWriteFile(input.path, input.content, input.serverId);
+          await logServerAction(ctx.user.id, input.serverId, "file_write", input.path, `Updated ${input.path}`);
+          return { success: true };
+        }),
+      download: protectedProcedure
+        .input(z.object({ serverId: z.number().int().positive(), path: z.string().min(1) }))
+        .mutation(async ({ ctx, input }) => {
+          const server = await getOwnedServer(ctx.user.id, input.serverId);
+          if (!server) throw new Error("Server not found");
+          if (!falixIsConfigured()) throw new Error("Remote file provider is not configured");
+          const result = await falixCreateDownload(input.path, input.serverId);
+          return { success: true, ...result };
+        }),
       create: protectedProcedure
         .input(z.object({ serverId: z.number().int().positive(), parentPath: z.string().default("/"), name: z.string().min(1).max(120), kind: z.enum(["file", "folder"]) }))
         .mutation(async ({ ctx, input }) => {
@@ -276,10 +304,10 @@ export const appRouter = router({
           if (!server) throw new Error("Server not found");
           if (falixIsConfigured()) {
             if (input.kind === "folder") {
-              await falixCreateFolder(input.parentPath, input.name);
+              await falixCreateFolder(input.parentPath, input.name, input.serverId);
             } else {
               const path = `${input.parentPath.replace(/\/$/, "") || ""}/${input.name}`;
-              await falixWriteFile(path);
+              await falixWriteFile(path, "", input.serverId);
             }
           } else {
             await createOwnedFile(ctx.user.id, input.serverId, input.parentPath, input.name, input.kind);
@@ -294,7 +322,7 @@ export const appRouter = router({
           const server = await getOwnedServer(ctx.user.id, input.serverId);
           if (!server) throw new Error("Server not found");
           if (falixIsConfigured()) {
-            await falixDeleteFiles([input.path]);
+            await falixDeleteFiles([input.path], input.serverId);
           } else {
             // Fallback for local metadata (not implemented for real files)
           }

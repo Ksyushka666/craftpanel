@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { TrpcContext } from "./_core/context";
 
 const falixMocks = vi.hoisted(() => ({
+  falixCreateDownload: vi.fn(),
   falixCreateFolder: vi.fn(),
   falixGetOnlinePlayers: vi.fn(),
   falixGetServerDetails: vi.fn(),
@@ -147,7 +148,7 @@ describe("servers ownership and actions", () => {
     const caller = appRouter.createCaller(createContext(42));
     const result = await caller.servers.action({ id: 7, action: "start" });
     expect(result.success).toBe(true);
-    expect(falixMocks.falixSendPower).toHaveBeenCalledWith("start");
+    expect(falixMocks.falixSendPower).toHaveBeenCalledWith("start", 7);
     expect(dbMocks.updateOwnedServerStatus).not.toHaveBeenCalled();
   });
 
@@ -211,7 +212,7 @@ describe("servers ownership and actions", () => {
     dbMocks.getRecentServerLogs.mockResolvedValue([]);
     const caller = appRouter.createCaller(createContext(42));
     const result = await caller.servers.logs({ id: 7 });
-    expect(falixMocks.falixReadFile).toHaveBeenCalledWith("/logs/latest.log");
+    expect(falixMocks.falixReadFile).toHaveBeenCalledWith("/logs/latest.log", 7);
     expect(result.map(log => log.message)).toContain("[INFO] booted");
     expect(result.map(log => log.level)).toContain("warn");
   });
@@ -221,8 +222,8 @@ describe("servers ownership and actions", () => {
     const caller = appRouter.createCaller(createContext(42));
     await caller.servers.files.create({ serverId: 7, parentPath: "/", name: "plugins", kind: "folder" });
     await caller.servers.files.delete({ serverId: 7, path: "/plugins" });
-    expect(falixMocks.falixCreateFolder).toHaveBeenCalledWith("/", "plugins");
-    expect(falixMocks.falixDeleteFiles).toHaveBeenCalledWith(["/plugins"]);
+    expect(falixMocks.falixCreateFolder).toHaveBeenCalledWith("/", "plugins", 7);
+    expect(falixMocks.falixDeleteFiles).toHaveBeenCalledWith(["/plugins"], 7);
   });
 
   it("keeps server log queries owner-scoped", async () => {

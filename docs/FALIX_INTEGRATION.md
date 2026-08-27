@@ -1,10 +1,10 @@
 # Falix Free integration
 
-CraftPanel can use **Falix Free** as the external Minecraft runtime while the panel remains deployed on Render. The Falix API key is server-only and is stored as the `FALIX_API_KEY` project secret. The selected Falix server is mapped through `FALIX_SERVER_ID`; it is not hardcoded in the application source.
+CraftPanel can use **Falix Free** as the external Minecraft runtime while the panel remains deployed on Render. The Falix API key is server-only and is stored as the `FALIX_API_KEY` project secret. The selected Falix server is mapped through `FALIX_SERVER_ID`; it is not hardcoded in the application source. For multiple local CraftPanel servers, set `FALIX_SERVER_MAP` to a JSON object such as `{"1":3409521,"2":3409522}`. The local server id is passed to every provider call; an unmapped local id falls back to the single-server variable.
 
 ## What is connected
 
-The provider bridge uses the official Falix API v2. Lifecycle actions call `POST /servers/{server_id}/power` with idempotency keys. The dashboard polling path reads `/status` and `/players/online`, then persists real state, CPU, RAM, disk and player values into the owner-scoped CraftPanel server record. Console commands request a short-lived console token and use the provider WebSocket, so the Falix API key is never sent to the socket. The file manager lists the provider directory and uses the provider's folder, file-write and delete APIs instead of local metadata when Falix is configured.
+The provider bridge uses the official Falix API v2. Lifecycle actions call `POST /servers/{server_id}/power` with idempotency keys. The dashboard polling path reads `/status` and `/players/online`, then persists real state, CPU, RAM, disk and player values into the owner-scoped CraftPanel server record. Console commands request a short-lived console token and use the provider WebSocket, so the Falix API key is never sent to the socket. The file manager lists the provider directory and uses the provider's folder, file-write, content-read and delete APIs instead of local metadata when Falix is configured. Authenticated tRPC procedures also expose text read, UTF-8 write (limited to 64 KiB), and short-lived signed download URLs; binary uploads remain a documented provider-boundary extension rather than being proxied through the panel.
 
 Falix's console WebSocket token expires after about ten minutes. The bridge obtains a fresh token per command; a future continuous live-console improvement can keep one session open and renew the token on `token expiring`. Falix API webhooks can be added later for push lifecycle/player events, but dashboard status polling remains the safe fallback.
 
@@ -23,7 +23,8 @@ The verified server for this project is Falix server `3409521`, currently report
 | Variable | Location | Purpose |
 |---|---|---|
 | `FALIX_API_KEY` | Render/WebDev server secret | Bearer credential for Falix API v2; never expose to browser |
-| `FALIX_SERVER_ID` | Render/WebDev server variable | External Falix server mapped to the first CraftPanel server |
+| `FALIX_SERVER_ID` | Render/WebDev server variable | Single external Falix server fallback |
+| `FALIX_SERVER_MAP` | Render/WebDev server variable (optional) | JSON mapping from local CraftPanel server IDs to Falix server IDs |
 | `VITE_OAUTH_PORTAL_URL`, `VITE_APP_ID` and related Manus variables | Platform-managed | Existing CraftPanel OAuth; custom domain callback uses the browser origin and requires no hardcoded provider URL |
 | Built-in storage variables | Platform-managed | Existing S3-compatible Manus storage for panel artifacts and backups |
 
