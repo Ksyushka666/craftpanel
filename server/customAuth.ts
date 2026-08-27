@@ -152,6 +152,17 @@ function redirectWithAuthError(res: Response, reason: string) {
   res.redirect(buildDiscordAuthErrorRedirect(reason));
 }
 
+export function describeDiscordOAuthError(status: number, body: string, redirectUri: string) {
+  let detail = "unknown_error";
+  try {
+    const parsed = JSON.parse(body) as { error?: string; error_description?: string };
+    detail = parsed.error_description || parsed.error || detail;
+  } catch {
+    detail = body.slice(0, 160) || detail;
+  }
+  return `Discord token exchange failed (${status}: ${detail}; redirect_uri=${redirectUri})`;
+}
+
 export function buildDiscordAuthorizationUrl(req: Request, state: string) {
   const clientId = process.env.DISCORD_CLIENT_ID;
   if (!clientId) throw new Error("Discord OAuth is not configured");
@@ -168,19 +179,22 @@ async function exchangeDiscordCode(req: Request, code: string) {
   const clientId = process.env.DISCORD_CLIENT_ID;
   const clientSecret = process.env.DISCORD_CLIENT_SECRET;
   if (!clientId || !clientSecret) throw new Error("Discord OAuth is not configured");
+  const redirectUri = getDiscordRedirectUri(req);
   const form = new URLSearchParams({
     client_id: clientId,
     client_secret: clientSecret,
     grant_type: "authorization_code",
     code,
-    redirect_uri: getDiscordRedirectUri(req),
+    redirect_uri: redirectUri,
   });
   const response = await fetch("https://discord.com/api/oauth2/token", {
     method: "POST",
     headers: { "content-type": "application/x-www-form-urlencoded" },
     body: form,
   });
-  if (!response.ok) throw new Error("Discord token exchange failed");
+  if (!response.ok) {
+    throw new Error(describeDiscordOAuthError(response.status, await response.text(), redirectUri));
+  }
   const payload = await response.json() as { access_token?: string; token_type?: string };
   if (!payload.access_token) throw new Error("Discord token missing");
   return payload.access_token;

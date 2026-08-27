@@ -163,3 +163,6 @@
 - [x] Use the valid key to set Discord secrets in Render and verify production OAuth start endpoint
 - [x] Complete an end-to-end Discord login on https://craftpanel-7d9t.onrender.com and confirm callback/session creation, or document provider interaction blocked by unavailable browser/account control (start→Discord consent verified; final callback requires a real Discord account interaction)
 - [ ] Keep Render deployment verification open until the live Render Discord callback and post-login session are confirmed
+- [x] Diagnose Render Discord callback token-exchange or user-lookup failure after provider consent (Render logs identify Discord token exchange failure)
+- [ ] Fix callback session creation and verify redirect to /servers after real Discord login
+- [x] Add regression coverage for callback error handling and successful session creation (67 tests pass)
