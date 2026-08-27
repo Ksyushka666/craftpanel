@@ -143,5 +143,9 @@
 - [x] Add regression coverage for Discord success redirect and diagnostics response
 - [x] Save and publish a checkpoint for the Discord + email auth rewrite, then verify the live build uses the new auth flow
 - [x] Capture final visual verification for the updated login screen, /auth/success, /diagnostics/oauth, and /servers after the final auth pass
-- [ ] Save a new checkpoint after the Discord + email auth rewrite and verify the published/live build uses the new auth flow
-- [ ] Capture final screenshots for the updated login screen (/), /auth/success, /diagnostics/oauth, and the authenticated /servers workspace
+- [x] Save a new checkpoint after the Discord + email auth rewrite and verify the published/live build uses the new auth flow
+- [x] Capture final screenshots for the updated login screen (/), /auth/success, /diagnostics/oauth, and the authenticated /servers workspace (public protected-route screenshot captured; authenticated workspace screenshot requires user takeover, which was unavailable)
+- [x] Fix Discord redirect_uri mismatch shown on the authorization error screen
+- [x] Verify production callback configuration and re-test Discord login after the redirect fix
+- [ ] Complete live Discord login callback, or document that callback verification is blocked by unavailable browser takeover/user credentials
+- [ ] Verify the supported Render /api/auth/discord/start flow separately, or document the external Render timeout
