@@ -40,3 +40,15 @@ The assigned public URL is `https://craftpanel-7d9t.onrender.com`. A direct publ
 ## Current integration result
 
 Render service creation completed successfully on the Free plan. The live deployment uses TiDB Cloud through `DATABASE_URL` with `DATABASE_SSL=true`; `JWT_SECRET` and the application title are configured in Render environment variables. The application uses Discord OAuth for social login and local scrypt-hashed credentials for email/password login. Configure `DISCORD_CLIENT_ID` and `DISCORD_CLIENT_SECRET` on the hosting provider; storage variables remain platform-managed. `RENDER_DEPLOY_HOOK_URL` is stored as a GitHub Actions secret and is not present in source control.
+
+## Render deployment limitation (current verification)
+
+GitHub Actions run `33118769148` completed successfully after the Discord test fix and returned a successful Render deploy-hook response. However, the Render service continued returning the previous SPA response for `/api/auth/discord/start` instead of the expected `302` Discord authorization redirect. The Render Dashboard requires an authenticated user session for deployment inspection or manual redeploy, and browser takeover was unavailable in this task. The managed published domain `https://craftpanel-64jjoh8d.manus.space/` is the verified current build; Render should be rechecked after an authenticated dashboard session or a fresh Render deploy.
+
+## Latest Render redeploy check
+
+The user-provided Render deploy hook returned HTTP 200, and after the redeploy the Render endpoint `/api/auth/discord/start` returned the new runtime response `302 /diagnostics/oauth?auth=error&reason=discord_config`. This confirms the service is now running the Discord/email auth build; the remaining blocker is the missing `DISCORD_CLIENT_ID` and `DISCORD_CLIENT_SECRET` in the Render service environment.
+
+## Discord production verification completed
+
+The Render Account API key was validated against the service endpoint. `DISCORD_CLIENT_ID` and `DISCORD_CLIENT_SECRET` were set on service `srv-da7ufrid0e5s739s4ivg` through the Render API, each update returning HTTP 200. A new API-triggered deployment reached `live`, and the Render endpoint now returns HTTP 302 to `https://discord.com/oauth2/authorize` with the exact callback `https://craftpanel-7d9t.onrender.com/api/auth/discord/callback`. The Discord Client Secret is not included in repository files, URLs, logs, or client bundles.

@@ -147,7 +147,19 @@
 - [x] Capture final screenshots for the updated login screen (/), /auth/success, /diagnostics/oauth, and the authenticated /servers workspace (public protected-route screenshot captured; authenticated workspace screenshot requires user takeover, which was unavailable)
 - [x] Fix Discord redirect_uri mismatch shown on the authorization error screen
 - [x] Verify production callback configuration and re-test Discord login after the redirect fix
-- [ ] Complete live Discord login callback, or document that callback verification is blocked by unavailable browser takeover/user credentials
-- [ ] Verify the supported Render /api/auth/discord/start flow separately, or document the external Render timeout
-- [ ] Make Discord authorization URL tests deterministic without requiring production secrets in GitHub Actions
-- [ ] Re-run GitHub Actions and verify Render deployment after the CI secret-independent test fix
+- [x] Complete live Discord login callback, or document that callback verification is blocked by unavailable browser takeover/user credentials
+- [x] Verify the supported Render /api/auth/discord/start flow separately, or document the external Render timeout
+- [x] Make Discord authorization URL tests deterministic without requiring production secrets in GitHub Actions
+- [x] Re-run GitHub Actions and verify Render deployment after the CI secret-independent test fix
+- [x] Investigate why Render still serves the stale SPA after successful GitHub Actions deploy and confirm /api/auth/discord/start returns the expected Discord redirect on Render (resolved: Render API deployment completed and the endpoint now returns the expected Discord redirect)
+- [x] If Render propagation cannot be fixed immediately, document the exact external Render deployment limitation and keep deployment verification open (limitation documented; later resolved through Render API deployment)
+- [x] Investigate and fix why Render still serves the stale SPA after successful GitHub Actions deploy, then confirm /api/auth/discord/start returns the expected Discord redirect on https://craftpanel-7d9t.onrender.com
+- [x] Keep Render deployment verification explicitly open until the live Render auth flow is confirmed (Render start endpoint confirmed after API redeploy; interactive Discord consent remains outside automated scope)
+- [x] If browser/dashboard access remains unavailable, document the exact Render-side blocker and leave live Render auth verification as pending scope (documented; API access later completed the deployment)
+- [x] Add DISCORD_CLIENT_ID and DISCORD_CLIENT_SECRET to the Render service environment and confirm discord_config is cleared
+- [x] Configure DISCORD_CLIENT_ID and DISCORD_CLIENT_SECRET in Render Environment through an authorized Render session or supported secret channel
+- [x] Add the two Discord secrets in Render Environment; automated browser bridge timed out during the confirmed transactional operation (completed through Render API instead)
+- [x] Obtain a valid Render Account API key through the direct API Keys page or protected secret form
+- [x] Use the valid key to set Discord secrets in Render and verify production OAuth start endpoint
+- [ ] Complete an end-to-end Discord login on https://craftpanel-7d9t.onrender.com and confirm callback/session creation, or document provider interaction blocked by unavailable browser/account control
+- [ ] Keep Render deployment verification open until the live Render Discord callback and post-login session are confirmed
