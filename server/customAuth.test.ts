@@ -10,18 +10,29 @@ describe("custom authentication", () => {
   });
 
   it("builds Discord authorization URL without exposing the client secret", () => {
-    const request = {
-      protocol: "https",
-      headers: { "x-forwarded-proto": "https", "x-forwarded-host": "craftpanel-7d9t.onrender.com" },
-      get: () => "craftpanel-7d9t.onrender.com",
-    } as never;
-    const url = new URL(buildDiscordAuthorizationUrl(request, "state-check"));
-    expect(url.origin + url.pathname).toBe("https://discord.com/oauth2/authorize");
-    expect(url.searchParams.get("response_type")).toBe("code");
-    expect(url.searchParams.get("scope")).toBe("identify email");
-    expect(url.searchParams.get("state")).toBe("state-check");
-    expect(url.searchParams.get("redirect_uri")).toBe("https://craftpanel-7d9t.onrender.com/api/auth/discord/callback");
-    expect(url.toString()).not.toContain(process.env.DISCORD_CLIENT_SECRET || "__missing_secret__");
+    const previousClientId = process.env.DISCORD_CLIENT_ID;
+    const previousClientSecret = process.env.DISCORD_CLIENT_SECRET;
+    process.env.DISCORD_CLIENT_ID = "test-discord-client-id";
+    process.env.DISCORD_CLIENT_SECRET = "test-discord-client-secret";
+    try {
+      const request = {
+        protocol: "https",
+        headers: { "x-forwarded-proto": "https", "x-forwarded-host": "craftpanel-7d9t.onrender.com" },
+        get: () => "craftpanel-7d9t.onrender.com",
+      } as never;
+      const url = new URL(buildDiscordAuthorizationUrl(request, "state-check"));
+      expect(url.origin + url.pathname).toBe("https://discord.com/oauth2/authorize");
+      expect(url.searchParams.get("response_type")).toBe("code");
+      expect(url.searchParams.get("scope")).toBe("identify email");
+      expect(url.searchParams.get("state")).toBe("state-check");
+      expect(url.searchParams.get("redirect_uri")).toBe("https://craftpanel-7d9t.onrender.com/api/auth/discord/callback");
+      expect(url.toString()).not.toContain("test-discord-client-secret");
+    } finally {
+      if (previousClientId === undefined) delete process.env.DISCORD_CLIENT_ID;
+      else process.env.DISCORD_CLIENT_ID = previousClientId;
+      if (previousClientSecret === undefined) delete process.env.DISCORD_CLIENT_SECRET;
+      else process.env.DISCORD_CLIENT_SECRET = previousClientSecret;
+    }
   });
 
   it("uses a configured request origin for local callback construction", () => {

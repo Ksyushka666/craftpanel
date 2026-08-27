@@ -149,3 +149,5 @@
 - [x] Verify production callback configuration and re-test Discord login after the redirect fix
 - [ ] Complete live Discord login callback, or document that callback verification is blocked by unavailable browser takeover/user credentials
 - [ ] Verify the supported Render /api/auth/discord/start flow separately, or document the external Render timeout
+- [ ] Make Discord authorization URL tests deterministic without requiring production secrets in GitHub Actions
+- [ ] Re-run GitHub Actions and verify Render deployment after the CI secret-independent test fix
