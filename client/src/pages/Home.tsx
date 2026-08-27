@@ -32,7 +32,7 @@ import {
   createMetricPoint,
   type MetricPoint,
 } from "@/lib/metrics";
-import { isArchiveFileName, validateArchiveFile } from "@/lib/archiveValidation";
+import { getArchivePreview, isArchiveFileName, validateArchiveFile, type ArchivePreview } from "@/lib/archiveValidation";
 import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "wouter";
 import { toast } from "sonner";
@@ -134,6 +134,12 @@ const formatTime = (date: Date | string | number | null | undefined) =>
     : "только что";
 const percent = (value: number, total: number) =>
   total ? Math.min(100, Math.round((value / total) * 100)) : 0;
+const formatBytes = (value: number) => {
+  if (value < 1024) return `${value} B`;
+  if (value < 1024 ** 2) return `${(value / 1024).toFixed(1)} KB`;
+  if (value < 1024 ** 3) return `${(value / 1024 ** 2).toFixed(1)} MB`;
+  return `${(value / 1024 ** 3).toFixed(1)} GB`;
+};
 
 type Server = {
   id: number;
@@ -1815,6 +1821,7 @@ function FileManagerView({ server }: { server: Server }) {
   const [editorContent, setEditorContent] = useState("");
   const [dragActive, setDragActive] = useState(false);
   const [uploadState, setUploadState] = useState<{ status: "idle" | "uploading" | "success" | "error"; progress: number; name?: string }>({ status: "idle", progress: 0 });
+  const [archivePreview, setArchivePreview] = useState<{ file: File; preview: ArchivePreview } | null>(null);
   const utils = trpc.useUtils();
   const filesQuery = trpc.servers.files.list.useQuery({
     serverId: server.id,
@@ -1888,6 +1895,28 @@ function FileManagerView({ server }: { server: Server }) {
     setUploadState(current => ({ ...current, status: "success", progress: 100 }));
     window.setTimeout(() => setUploadState({ status: "idle", progress: 0 }), 2600);
   };
+  const uploadFile = async (file: File) => {
+    setUploadState({ status: "uploading", progress: 0, name: file.name });
+    try {
+      if (file.size > 10 * 1024 * 1024) {
+        await uploadMultipartWithProgress(file, progress => setUploadState(current => ({ ...current, progress })));
+        await utils.servers.files.list.invalidate({ serverId: server.id, parentPath });
+        toast.success("Большой файл загружен на сервер");
+      } else {
+        setUploadState(current => ({ ...current, progress: 15 }));
+        const contentBase64 = await readAsBase64(file);
+        setUploadState(current => ({ ...current, progress: 70 }));
+        await uploadMutation.mutateAsync({ serverId: server.id, parentPath, name: file.name, mimeType: file.type || "application/octet-stream", contentBase64 });
+      }
+      completeUpload();
+      return true;
+    } catch (error) {
+      setUploadState(current => ({ ...current, status: "error" }));
+      window.setTimeout(() => setUploadState({ status: "idle", progress: 0 }), 3200);
+      toast.error(error instanceof Error ? error.message : "Не удалось загрузить файл");
+      return false;
+    }
+  };
   const handleDrop = async (event: React.DragEvent<HTMLDivElement>) => {
     event.preventDefault();
     setDragActive(false);
@@ -1906,31 +1935,23 @@ function FileManagerView({ server }: { server: Server }) {
           window.setTimeout(() => setUploadState({ status: "idle", progress: 0 }), 3200);
           return;
         }
-      } catch {
+        const preview = await getArchivePreview(file);
+        setArchivePreview({ file, preview });
+        setUploadState({ status: "idle", progress: 0, name: file.name });
+        return;
+      } catch (error) {
         setUploadState({ status: "error", progress: 0, name: file.name });
-        toast.error("Не удалось проверить архив", { description: "Повторите загрузку или проверьте файл локально." });
+        toast.error("Не удалось подготовить preview архива", { description: error instanceof Error ? error.message : "Проверьте файл и повторите попытку." });
         window.setTimeout(() => setUploadState({ status: "idle", progress: 0 }), 3200);
         return;
       }
     }
-    setUploadState({ status: "uploading", progress: 0, name: file.name });
-    try {
-      if (file.size > 10 * 1024 * 1024) {
-        await uploadMultipartWithProgress(file, progress => setUploadState(current => ({ ...current, progress })));
-        await utils.servers.files.list.invalidate({ serverId: server.id, parentPath });
-        toast.success("Большой файл загружен на сервер");
-      } else {
-        setUploadState(current => ({ ...current, progress: 15 }));
-        const contentBase64 = await readAsBase64(file);
-        setUploadState(current => ({ ...current, progress: 70 }));
-        await uploadMutation.mutateAsync({ serverId: server.id, parentPath, name: file.name, mimeType: file.type || "application/octet-stream", contentBase64 });
-      }
-      completeUpload();
-    } catch (error) {
-      setUploadState(current => ({ ...current, status: "error" }));
-      window.setTimeout(() => setUploadState({ status: "idle", progress: 0 }), 3200);
-      toast.error(error instanceof Error ? error.message : "Не удалось загрузить файл");
-    }
+    await uploadFile(file);
+  };
+  const confirmArchiveUpload = async () => {
+    if (!archivePreview) return;
+    const uploaded = await uploadFile(archivePreview.file);
+    if (uploaded) setArchivePreview(null);
   };
   const segments =
     parentPath === "/" ? [] : parentPath.split("/").filter(Boolean);
@@ -2100,6 +2121,28 @@ function FileManagerView({ server }: { server: Server }) {
         {uploadState.status === "success" && <div className="upload-success mx-auto mt-4 flex max-w-md items-center justify-center gap-2 rounded-xl bg-[#effbd6] px-3 py-2 text-xs font-medium text-[#5f8420] dark:bg-[#263a1f] dark:text-[#c5ff3f]"><Check className="h-4 w-4" /> Файл успешно загружен</div>}
         {uploadState.status === "error" && <p className="mt-3 text-xs text-[#c45f73]">Загрузка не удалась. Попробуйте ещё раз.</p>}
       </div>
+      {archivePreview && (
+        <Card className="rounded-[24px] border-[#dfe2d6] bg-[#fffdf7] panel-shadow dark:border-white/10 dark:bg-[#171f19]">
+          <CardHeader className="border-b border-[#e7e9df] px-5 py-4 dark:border-white/10 sm:px-6">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-start gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#effbd6] text-[#6c9626] dark:bg-[#293b22] dark:text-[#c5ff3f]"><FileArchive className="h-5 w-5" /></div>
+                <div><p className="mono text-[10px] uppercase tracking-[0.15em] text-[#899386]">Проверка завершена</p><CardTitle className="mt-1 text-base">{archivePreview.file.name}</CardTitle><p className="mt-1 text-xs text-[#899386]">Проверь содержимое перед отправкой на сервер.</p></div>
+              </div>
+              <Badge className="shrink-0 rounded-md bg-[#effbd6] text-[10px] text-[#638823] dark:bg-[#293b22] dark:text-[#c5ff3f]">OK</Badge>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4 p-5 sm:p-6">
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div className="rounded-xl bg-[#f1f3ea] p-3 dark:bg-[#202a21]"><p className="text-[10px] uppercase tracking-wide text-[#899386]">Размер архива</p><p className="mt-1 text-sm font-semibold">{formatBytes(archivePreview.preview.archiveSize)}</p></div>
+              <div className="rounded-xl bg-[#f1f3ea] p-3 dark:bg-[#202a21]"><p className="text-[10px] uppercase tracking-wide text-[#899386]">Файлов</p><p className="mt-1 text-sm font-semibold">{archivePreview.preview.totalEntries}</p></div>
+              <div className="rounded-xl bg-[#f1f3ea] p-3 dark:bg-[#202a21]"><p className="text-[10px] uppercase tracking-wide text-[#899386]">Распакованный размер</p><p className="mt-1 text-sm font-semibold">{formatBytes(archivePreview.preview.totalUncompressedSize)}</p></div>
+            </div>
+            {archivePreview.preview.previewAvailable ? <div className="max-h-56 overflow-auto rounded-xl border border-[#e7e9df] bg-white/60 dark:border-white/10 dark:bg-black/10"><div className="divide-y divide-[#e7e9df] dark:divide-white/10">{archivePreview.preview.entries.map((entry, index) => <div key={`${entry.name}-${index}`} className="flex items-center justify-between gap-3 px-3 py-2 text-xs"><span className="min-w-0 truncate">{entry.directory ? "📁 " : "📄 "}{entry.name}</span><span className="shrink-0 text-[#899386]">{entry.directory ? "папка" : formatBytes(entry.size)}</span></div>)}</div>{archivePreview.preview.totalEntries > archivePreview.preview.entries.length && <p className="border-t border-[#e7e9df] px-3 py-2 text-[11px] text-[#899386] dark:border-white/10">Показаны первые {archivePreview.preview.entries.length} элементов из {archivePreview.preview.totalEntries}.</p>}</div> : <p className="rounded-xl bg-[#f1f3ea] p-3 text-xs text-[#899386] dark:bg-[#202a21]">Список файлов для этого формата недоступен, но проверка сигнатуры пройдена.</p>}
+            <div className="flex flex-col-reverse justify-end gap-2 sm:flex-row"><Button variant="outline" onClick={() => setArchivePreview(null)} className="rounded-xl">Отменить</Button><Button onClick={confirmArchiveUpload} disabled={uploadState.status === "uploading"} className="rounded-xl bg-[#c5ff3f] text-[#151a16] hover:bg-[#d7ff76]">Отправить на сервер <ArrowUpRight className="ml-2 h-4 w-4" /></Button></div>
+          </CardContent>
+        </Card>
+      )}
       {selectedPath && (
         <Card className="rounded-[24px] border-[#dfe2d6] bg-[#fffdf7] panel-shadow dark:border-white/10 dark:bg-[#171f19]">
           <CardHeader className="border-b border-[#e7e9df] px-5 py-4 dark:border-white/10 sm:px-6">

@@ -21,6 +21,13 @@ const u32 = (bytes: Uint8Array, offset: number) => (bytes[offset] | (bytes[offse
 const zipBytes = (extension: string) => ["zip", "jar", "war", "ear"].includes(extension);
 
 export type ArchiveValidation = { valid: true } | { valid: false; reason: string };
+export type ArchivePreview = {
+  archiveSize: number;
+  totalUncompressedSize: number;
+  entries: Array<{ name: string; size: number; compressedSize: number; directory: boolean }>;
+  totalEntries: number;
+  previewAvailable: boolean;
+};
 
 async function validateZipStructure(file: Pick<File, "size" | "slice">): Promise<ArchiveValidation> {
   const tailStart = Math.max(0, file.size - 65_557);
@@ -77,4 +84,39 @@ export async function validateArchiveFile(file: Pick<File, "name" | "size" | "sl
   }
   const signature = SIGNATURES.find(item => item.extensions.includes(extension));
   return signature && startsWith(header, signature.bytes) ? { valid: true } : { valid: false, reason: "Файл имеет неверную сигнатуру и может быть повреждён" };
+}
+
+export async function getArchivePreview(file: Pick<File, "name" | "size" | "slice">): Promise<ArchivePreview> {
+  const validation = await validateArchiveFile(file);
+  if (!validation.valid) throw new Error(validation.reason);
+  const extension = extensionOf(file.name);
+  if (!zipBytes(extension)) {
+    return { archiveSize: file.size, totalUncompressedSize: file.size, entries: [], totalEntries: 0, previewAvailable: false };
+  }
+  const tailStart = Math.max(0, file.size - 65_557);
+  const tail = new Uint8Array(await file.slice(tailStart, file.size).arrayBuffer());
+  let eocd = -1;
+  for (let index = tail.length - 22; index >= 0; index -= 1) {
+    if (u32(tail, index) === 0x06054b50) { eocd = index; break; }
+  }
+  if (eocd < 0) throw new Error("ZIP-архив повреждён: не найден каталог");
+  const totalEntries = u16(tail, eocd + 10);
+  const directorySize = u32(tail, eocd + 12);
+  const directoryOffset = u32(tail, eocd + 16);
+  const directory = new Uint8Array(await file.slice(directoryOffset, directoryOffset + directorySize).arrayBuffer());
+  const entries: ArchivePreview["entries"] = [];
+  let offset = 0;
+  let totalUncompressedSize = 0;
+  for (let index = 0; index < totalEntries; index += 1) {
+    const nameLength = u16(directory, offset + 28);
+    const extraLength = u16(directory, offset + 30);
+    const commentLength = u16(directory, offset + 32);
+    const compressedSize = u32(directory, offset + 20);
+    const size = u32(directory, offset + 24);
+    const name = new TextDecoder().decode(directory.slice(offset + 46, offset + 46 + nameLength));
+    totalUncompressedSize += size;
+    if (entries.length < 500) entries.push({ name, size, compressedSize, directory: name.endsWith("/") });
+    offset += 46 + nameLength + extraLength + commentLength;
+  }
+  return { archiveSize: file.size, totalUncompressedSize, entries, totalEntries, previewAvailable: true };
 }
