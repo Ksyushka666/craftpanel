@@ -165,4 +165,4 @@
 - [ ] Keep Render deployment verification open until the live Render Discord callback and post-login session are confirmed
 - [x] Diagnose Render Discord callback token-exchange or user-lookup failure after provider consent (Render logs identify Discord token exchange failure)
 - [ ] Fix callback session creation and verify redirect to /servers after real Discord login
-- [x] Add regression coverage for callback error handling and successful session creation (67 tests pass)
+- [x] Add route-level regression coverage for callback success session cookie/redirect and token-exchange failure redirect (69 tests pass)
