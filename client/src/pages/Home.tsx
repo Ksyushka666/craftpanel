@@ -1976,7 +1976,7 @@ function FileManagerView({ server }: { server: Server }) {
                   )}
                   <Button
                     variant="ghost"
-                    onClick={() => deleteMutation.mutate({ id: file.id })}
+                    onClick={() => deleteMutation.mutate({ serverId: server.id, path: `${file.path.replace(/\/$/, "") || ""}/${file.name}` })}
                     className="h-8 w-8 rounded-lg p-0 text-[#9ba59a] hover:bg-[#ffe5ea] hover:text-[#d56e82]"
                   >
                     <X className="h-3.5 w-3.5" />

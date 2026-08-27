@@ -1,10 +1,27 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { TrpcContext } from "./_core/context";
 
+const falixMocks = vi.hoisted(() => ({
+  falixCreateFolder: vi.fn(),
+  falixGetOnlinePlayers: vi.fn(),
+  falixGetServerDetails: vi.fn(),
+  falixGetStatus: vi.fn(),
+  falixIsConfigured: vi.fn(() => false),
+  falixListFiles: vi.fn(),
+  falixReadFile: vi.fn(),
+  falixWriteFile: vi.fn(),
+  falixDeleteFiles: vi.fn(),
+  falixSendConsoleCommand: vi.fn(),
+  falixSendPower: vi.fn(),
+}));
+
+vi.mock("./falix", () => falixMocks);
+
 const dbMocks = vi.hoisted(() => ({
   getOwnedServers: vi.fn(),
   getOwnedServer: vi.fn(),
   updateOwnedServerStatus: vi.fn(),
+  updateOwnedServerTelemetry: vi.fn(),
   logServerAction: vi.fn(),
   updateOwnedServerConfig: vi.fn(),
   getRecentServerActions: vi.fn(),
@@ -76,6 +93,10 @@ function createContext(userId = 42): TrpcContext {
 describe("servers ownership and actions", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    falixMocks.falixIsConfigured.mockReturnValue(false);
+    falixMocks.falixGetServerDetails.mockResolvedValue({});
+    falixMocks.falixGetStatus.mockResolvedValue({ state: "offline", resources: {} });
+    falixMocks.falixGetOnlinePlayers.mockResolvedValue({ online_players: 0 });
     dbMocks.getOwnedServer.mockResolvedValue(sampleServer);
     dbMocks.getOwnedBackup.mockResolvedValue({
       id: 9,
@@ -88,6 +109,7 @@ describe("servers ownership and actions", () => {
       createdAt: new Date(),
     });
     dbMocks.updateOwnedServerStatus.mockResolvedValue(sampleServer);
+    dbMocks.updateOwnedServerTelemetry.mockResolvedValue(sampleServer);
     dbMocks.logServerAction.mockResolvedValue([]);
   });
 
@@ -108,7 +130,7 @@ describe("servers ownership and actions", () => {
     expect(dbMocks.updateOwnedServerStatus).toHaveBeenCalledWith(
       42,
       7,
-      "online"
+      "starting"
     );
     expect(dbMocks.logServerAction).toHaveBeenCalledWith(
       42,
@@ -117,6 +139,34 @@ describe("servers ownership and actions", () => {
       undefined,
       expect.stringContaining("RESTART")
     );
+  });
+
+  it("delegates lifecycle actions to Falix when the provider is configured", async () => {
+    falixMocks.falixIsConfigured.mockReturnValue(true);
+    falixMocks.falixSendPower.mockResolvedValue({ state: "starting" });
+    const caller = appRouter.createCaller(createContext(42));
+    const result = await caller.servers.action({ id: 7, action: "start" });
+    expect(result.success).toBe(true);
+    expect(falixMocks.falixSendPower).toHaveBeenCalledWith("start");
+    expect(dbMocks.updateOwnedServerStatus).not.toHaveBeenCalled();
+  });
+
+  it("persists Falix telemetry during the server list sync", async () => {
+    falixMocks.falixIsConfigured.mockReturnValue(true);
+    falixMocks.falixGetServerDetails.mockResolvedValue({ allocation: { ip: "5.9.89.83", port: 32296 } });
+    falixMocks.falixGetStatus.mockResolvedValue({ state: "running", resources: { cpu_percent: 18, memory_bytes: 512 * 1024 * 1024, memory_limit_bytes: 2560 * 1024 * 1024, disk_bytes: 1024 * 1024 * 1024 } });
+    falixMocks.falixGetOnlinePlayers.mockResolvedValue({ online_players: 3 });
+    dbMocks.getOwnedServers.mockResolvedValue([sampleServer]);
+    const caller = appRouter.createCaller(createContext(42));
+    await caller.servers.list();
+    expect(dbMocks.updateOwnedServerTelemetry).toHaveBeenCalledWith(42, 7, expect.objectContaining({
+      status: "online",
+      playersOnline: 3,
+      cpuPercent: 18,
+      ramUsedMb: 512,
+      ramTotalMb: 2560,
+      address: "5.9.89.83:32296",
+    }));
   });
 
   it("passes the authenticated owner id to the server list query", async () => {
@@ -153,6 +203,26 @@ describe("servers ownership and actions", () => {
     dbMocks.getOwnedFiles.mockResolvedValue([]);
     await caller.servers.files.list({ serverId: 7, parentPath: "/plugins" });
     expect(dbMocks.getOwnedFiles).toHaveBeenCalledWith(42, 7, "/plugins");
+  });
+
+  it("reads remote latest.log when Falix is configured", async () => {
+    falixMocks.falixIsConfigured.mockReturnValue(true);
+    falixMocks.falixReadFile.mockResolvedValue({ content: "[INFO] booted\n[WARN] slow tick" });
+    dbMocks.getRecentServerLogs.mockResolvedValue([]);
+    const caller = appRouter.createCaller(createContext(42));
+    const result = await caller.servers.logs({ id: 7 });
+    expect(falixMocks.falixReadFile).toHaveBeenCalledWith("/logs/latest.log");
+    expect(result.map(log => log.message)).toContain("[INFO] booted");
+    expect(result.map(log => log.level)).toContain("warn");
+  });
+
+  it("creates and deletes remote Falix files with owner checks", async () => {
+    falixMocks.falixIsConfigured.mockReturnValue(true);
+    const caller = appRouter.createCaller(createContext(42));
+    await caller.servers.files.create({ serverId: 7, parentPath: "/", name: "plugins", kind: "folder" });
+    await caller.servers.files.delete({ serverId: 7, path: "/plugins" });
+    expect(falixMocks.falixCreateFolder).toHaveBeenCalledWith("/", "plugins");
+    expect(falixMocks.falixDeleteFiles).toHaveBeenCalledWith(["/plugins"]);
   });
 
   it("keeps server log queries owner-scoped", async () => {

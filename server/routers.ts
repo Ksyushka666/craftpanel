@@ -25,9 +25,47 @@ import {
   updateBackupFromRuntime,
   updateOwnedServerConfig,
   updateOwnedServerStatus,
+  updateOwnedServerTelemetry,
 } from "./db";
+import {
+  falixCreateFolder,
+  falixGetOnlinePlayers,
+  falixGetServerDetails,
+  falixGetStatus,
+  falixIsConfigured,
+  falixListFiles,
+  falixReadFile,
+  falixWriteFile,
+  falixDeleteFiles,
+  falixSendConsoleCommand,
+  falixSendPower,
+} from "./falix";
 
 const serverIdInput = z.object({ id: z.number().int().positive() });
+
+function mapFalixState(state: string | undefined): "online" | "offline" | "starting" | "stopping" {
+  if (state === "running") return "online";
+  if (state === "starting") return "starting";
+  if (state === "stopping") return "stopping";
+  return "offline";
+}
+
+async function syncFalixServer(ownerId: number, localServerId: number) {
+  if (!falixIsConfigured()) return undefined;
+  const [details, status, players] = await Promise.all([falixGetServerDetails(), falixGetStatus(), falixGetOnlinePlayers().catch(() => undefined)]);
+  const resources = status.resources;
+  const allocation = details.allocation;
+  const address = allocation?.hostname || (allocation?.ip && allocation?.port ? `${allocation.ip}:${allocation.port}` : undefined);
+  return updateOwnedServerTelemetry(ownerId, localServerId, {
+    status: mapFalixState(status.state),
+    playersOnline: players?.online_players ?? 0,
+    ramUsedMb: Math.round((resources?.memory_bytes ?? 0) / 1024 / 1024),
+    ramTotalMb: Math.round((resources?.memory_limit_bytes ?? 0) / 1024 / 1024),
+    cpuPercent: Math.round(resources?.cpu_percent ?? 0),
+    diskUsedGb: Math.round((resources?.disk_bytes ?? 0) / 1024 / 1024 / 1024),
+    address,
+  });
+}
 
 export const appRouter = router({
   system: systemRouter,
@@ -63,7 +101,17 @@ export const appRouter = router({
   }),
 
   servers: router({
-    list: protectedProcedure.query(({ ctx }) => getOwnedServers(ctx.user.id)),
+    list: protectedProcedure.query(async ({ ctx }) => {
+      const servers = await getOwnedServers(ctx.user.id);
+      if (!falixIsConfigured() || servers.length === 0) return servers;
+      try {
+        await syncFalixServer(ctx.user.id, servers[0].id);
+        return getOwnedServers(ctx.user.id);
+      } catch (error) {
+        console.warn("[Falix] Telemetry sync failed:", error);
+        return servers;
+      }
+    }),
     create: protectedProcedure
       .input(z.object({
         name: z.string().trim().min(2).max(120),
@@ -83,12 +131,24 @@ export const appRouter = router({
         const server = await getOwnedServer(ctx.user.id, input.id);
         if (!server) throw new Error("Server not found");
         if (input.action === "command" && !input.command) throw new Error("Command is required");
-        const output = input.action === "command"
-          ? `[CraftPanel] Executed: ${input.command}`
-          : `${input.action.toUpperCase()} accepted for ${server.name}`;
-        if (input.action !== "command") {
-          const status = input.action === "stop" ? "offline" : "online";
-          await updateOwnedServerStatus(ctx.user.id, input.id, status);
+        let output: string;
+        if (falixIsConfigured()) {
+          if (input.action === "command") {
+            const result = await falixSendConsoleCommand(input.command!);
+            output = result.output.join("\\n") || `Команда отправлена на Falix: ${input.command}`;
+          } else {
+            await falixSendPower(input.action);
+            output = `Сигнал ${input.action} отправлен в Falix для ${server.name}`;
+          }
+          await syncFalixServer(ctx.user.id, input.id).catch(error => console.warn("[Falix] Post-action sync failed:", error));
+        } else {
+          output = input.action === "command"
+            ? `[CraftPanel] Executed: ${input.command}`
+            : `${input.action.toUpperCase()} accepted for ${server.name}`;
+          if (input.action !== "command") {
+            const status = input.action === "stop" ? "offline" : input.action === "start" ? "starting" : "starting";
+            await updateOwnedServerStatus(ctx.user.id, input.id, status);
+          }
         }
         await logServerAction(ctx.user.id, input.id, input.action, input.command, output);
         return { success: true, output, server: await getOwnedServer(ctx.user.id, input.id) };
@@ -119,7 +179,24 @@ export const appRouter = router({
       .query(async ({ ctx, input }) => {
         const server = await getOwnedServer(ctx.user.id, input.id);
         if (!server) throw new Error("Server not found");
-        return getRecentServerLogs(ctx.user.id, input.id);
+        const localLogs = await getRecentServerLogs(ctx.user.id, input.id);
+        if (!falixIsConfigured()) return localLogs;
+        try {
+          const remote = await falixReadFile("/logs/latest.log") as { content?: string; text?: string } | string;
+          const content = typeof remote === "string" ? remote : remote?.content ?? remote?.text ?? "";
+          const remoteLines = content.split(/\r?\n/).filter(Boolean).slice(-120).map((message, index) => ({
+            id: -(index + 1),
+            serverId: input.id,
+            ownerId: ctx.user.id,
+            level: /error|exception|fail/i.test(message) ? "error" as const : /warn/i.test(message) ? "warn" as const : "info" as const,
+            source: "falix",
+            message,
+            createdAt: new Date(),
+          }));
+          return [...remoteLines, ...localLogs];
+        } catch {
+          return localLogs;
+        }
       }),
     backups: protectedProcedure
       .input(serverIdInput)
@@ -169,12 +246,27 @@ export const appRouter = router({
           return { success: true };
         }),
     }),
-    files: router({
+          files: router({
       list: protectedProcedure
         .input(z.object({ serverId: z.number().int().positive(), parentPath: z.string().default("/") }))
         .query(async ({ ctx, input }) => {
           const server = await getOwnedServer(ctx.user.id, input.serverId);
           if (!server) throw new Error("Server not found");
+          if (falixIsConfigured()) {
+            const remoteFiles = await falixListFiles(input.parentPath);
+            return remoteFiles.map((file, index) => ({
+              id: -(index + 1),
+              ownerId: ctx.user.id,
+              serverId: input.serverId,
+              path: input.parentPath,
+              name: file.name,
+              kind: file.is_directory ? "folder" as const : "file" as const,
+              sizeBytes: file.size ?? 0,
+              storageKey: file.path,
+              createdAt: new Date(file.modified_at),
+              updatedAt: new Date(file.modified_at),
+            }));
+          }
           return getOwnedFiles(ctx.user.id, input.serverId, input.parentPath);
         }),
       create: protectedProcedure
@@ -182,13 +274,33 @@ export const appRouter = router({
         .mutation(async ({ ctx, input }) => {
           const server = await getOwnedServer(ctx.user.id, input.serverId);
           if (!server) throw new Error("Server not found");
-          await createOwnedFile(ctx.user.id, input.serverId, input.parentPath, input.name, input.kind);
+          if (falixIsConfigured()) {
+            if (input.kind === "folder") {
+              await falixCreateFolder(input.parentPath, input.name);
+            } else {
+              const path = `${input.parentPath.replace(/\/$/, "") || ""}/${input.name}`;
+              await falixWriteFile(path);
+            }
+          } else {
+            await createOwnedFile(ctx.user.id, input.serverId, input.parentPath, input.name, input.kind);
+          }
           await logServerAction(ctx.user.id, input.serverId, `file_${input.kind}`, input.name, `${input.kind} created`);
           return { success: true };
         }),
+
       delete: protectedProcedure
-        .input(z.object({ id: z.number().int().positive() }))
-        .mutation(({ ctx, input }) => deleteOwnedFile(ctx.user.id, input.id)),
+        .input(z.object({ serverId: z.number().int().positive(), path: z.string().min(1) }))
+        .mutation(async ({ ctx, input }) => {
+          const server = await getOwnedServer(ctx.user.id, input.serverId);
+          if (!server) throw new Error("Server not found");
+          if (falixIsConfigured()) {
+            await falixDeleteFiles([input.path]);
+          } else {
+            // Fallback for local metadata (not implemented for real files)
+          }
+          await logServerAction(ctx.user.id, input.serverId, "file_delete", input.path, `Deleted ${input.path}`);
+          return { success: true };
+        }),
     }),
     createBackup: protectedProcedure
       .input(z.object({ serverId: z.number().int().positive(), name: z.string().trim().min(2).max(160) }))

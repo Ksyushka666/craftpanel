@@ -131,12 +131,29 @@ export async function createOwnedServer(ownerId: number, data: {
 export async function updateOwnedServerStatus(ownerId: number, serverId: number, status: "online" | "offline" | "starting" | "stopping") {
   const db = await getDb();
   if (!db) throw new Error("Database is not available");
+  await db.update(minecraftServers).set({ status }).where(and(eq(minecraftServers.id, serverId), eq(minecraftServers.ownerId, ownerId)));
+  return getOwnedServer(ownerId, serverId);
+}
+
+export async function updateOwnedServerTelemetry(ownerId: number, serverId: number, telemetry: {
+  status: "online" | "offline" | "starting" | "stopping";
+  playersOnline?: number;
+  ramUsedMb?: number;
+  ramTotalMb?: number;
+  cpuPercent?: number;
+  diskUsedGb?: number;
+  address?: string;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database is not available");
   await db.update(minecraftServers).set({
-    status,
-    playersOnline: status === "online" ? 12 : 0,
-    tps: status === "online" ? 20 : 0,
-    ramUsedMb: status === "online" ? 2840 : 0,
-    cpuPercent: status === "online" ? 34 : 0,
+    status: telemetry.status,
+    ...(telemetry.playersOnline === undefined ? {} : { playersOnline: telemetry.playersOnline }),
+    ...(telemetry.ramUsedMb === undefined ? {} : { ramUsedMb: telemetry.ramUsedMb }),
+    ...(telemetry.ramTotalMb === undefined ? {} : { ramTotalMb: telemetry.ramTotalMb }),
+    ...(telemetry.cpuPercent === undefined ? {} : { cpuPercent: telemetry.cpuPercent }),
+    ...(telemetry.diskUsedGb === undefined ? {} : { diskUsedGb: telemetry.diskUsedGb }),
+    ...(telemetry.address === undefined ? {} : { address: telemetry.address }),
   }).where(and(eq(minecraftServers.id, serverId), eq(minecraftServers.ownerId, ownerId)));
   return getOwnedServer(ownerId, serverId);
 }

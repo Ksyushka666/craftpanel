@@ -57,3 +57,21 @@
 - [x] Confirm Render rebuild uses the new commit and reaches Live
 - [x] Configure and document exact production OAuth and storage environment variables on Render, or explicitly record why built-in values are intentionally used
 - [x] Reconcile docs/EXTERNAL_DEPLOY.md with the actual Render environment state
+- [x] Define runtime node protocol and hosting decision for Java/Bedrock processes
+- [ ] Add runtime node and multi-admin access data model with safe owner/team scoping
+- [x] Implement authenticated runtime adapter endpoints for process lifecycle and commands
+- [ ] Implement worker-side process supervisor for Java/Bedrock with restart and graceful stop
+- [x] Connect live telemetry, logs, console commands, and file operations to runtime adapter
+- [x] Define OAuth custom-domain callback policy and storage retention/access policy
+- [x] Add provider deployment configuration and operational documentation
+- [x] Add Vitest coverage for runtime lifecycle, telemetry, file bridge, and provider delegation
+- [ ] Run full validation and publish the runtime integration checkpoint
+- [x] Research alternative free Minecraft hosting without Oracle or home PC
+- [x] Compare provider APIs, RCON, file access, server IP, uptime, and automation limits
+- [x] Select a viable alternative or document the exact integration boundary
+- [x] Implement and test the compatible provider bridge in CraftPanel
+- [x] Update deployment documentation for the alternative-hosting result
+- [ ] Generalize runtime-provider mapping per CraftPanel server instead of syncing only the first local server to one global FALIX_SERVER_ID
+- [x] Add real runtime-backed log streaming or explicitly present latest.log polling as a limited fallback instead of full live console streaming
+- [ ] Extend file-provider integration with content read/write/edit plus upload/download boundaries
+- [x] Add Vitest coverage for telemetry persistence, remote log fallback, and Falix-backed file mutations
