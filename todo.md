@@ -161,5 +161,5 @@
 - [x] Add the two Discord secrets in Render Environment; automated browser bridge timed out during the confirmed transactional operation (completed through Render API instead)
 - [x] Obtain a valid Render Account API key through the direct API Keys page or protected secret form
 - [x] Use the valid key to set Discord secrets in Render and verify production OAuth start endpoint
-- [ ] Complete an end-to-end Discord login on https://craftpanel-7d9t.onrender.com and confirm callback/session creation, or document provider interaction blocked by unavailable browser/account control
+- [x] Complete an end-to-end Discord login on https://craftpanel-7d9t.onrender.com and confirm callback/session creation, or document provider interaction blocked by unavailable browser/account control (start→Discord consent verified; final callback requires a real Discord account interaction)
 - [ ] Keep Render deployment verification open until the live Render Discord callback and post-login session are confirmed
