@@ -51,3 +51,7 @@
 - [x] Document realtime chart polling and retention behavior in README
 - [x] Confirm metrics.test.ts discovery and passing execution in Vitest output
 - [x] Record Render workflow as YAML/build validated but E2E pending authenticated Render access
+- [ ] Add explicit DATABASE_SSL/TiDB TLS handling for production Render connection
+- [ ] Add Render DATABASE_URL and generated JWT_SECRET after TLS configuration is deployed
+- [ ] Commit and push TiDB TLS handling and current production fixes to GitHub
+- [ ] Confirm Render rebuild uses the new commit and reaches Live
