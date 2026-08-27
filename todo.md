@@ -117,4 +117,4 @@
 - [x] Parse verified ZIP/JAR archive entries and total uncompressed size for preview
 - [x] Add archive preview UI with file list, count, total size, cancel, and confirm upload actions
 - [x] Keep unverified archives blocked from final upload
-- [ ] Add archive preview tests, run validation, and save a checkpoint
+- [x] Add archive preview tests, run validation, and save a checkpoint
