@@ -496,7 +496,7 @@ export default function Home() {
             <EmptyFleet onCreate={() => setCreateOpen(true)} />
           )
         ) : location === "/settings" ? (
-          <SettingsView userName={user?.name ?? ""} />
+          <SettingsView userName={user?.name ?? ""} server={activeServer} />
         ) : location === "/help" ? (
           <HelpView />
         ) : (
@@ -1810,6 +1810,9 @@ function FileManagerView({ server }: { server: Server }) {
   const [createOpen, setCreateOpen] = useState(false);
   const [name, setName] = useState("");
   const [kind, setKind] = useState<"file" | "folder">("file");
+  const [selectedPath, setSelectedPath] = useState("");
+  const [editorContent, setEditorContent] = useState("");
+  const [dragActive, setDragActive] = useState(false);
   const utils = trpc.useUtils();
   const filesQuery = trpc.servers.files.list.useQuery({
     serverId: server.id,
@@ -1840,6 +1843,46 @@ function FileManagerView({ server }: { server: Server }) {
       toast.error(error.message || "Не удалось удалить элемент"),
   });
   const files = filesQuery.data ?? [];
+  const fileReadQuery = trpc.servers.files.read.useQuery(
+    { serverId: server.id, path: selectedPath },
+    { enabled: Boolean(selectedPath), retry: false },
+  );
+  const fileWriteMutation = trpc.servers.files.write.useMutation({
+    onSuccess: () => toast.success("Файл сохранён на сервере"),
+    onError: error => toast.error(error.message || "Не удалось сохранить файл"),
+  });
+  const uploadMutation = trpc.servers.files.upload.useMutation({
+    onSuccess: async () => {
+      await utils.servers.files.list.invalidate({ serverId: server.id, parentPath });
+      toast.success("Файл загружен на сервер");
+    },
+    onError: error => toast.error(error.message || "Не удалось загрузить файл"),
+  });
+  useEffect(() => {
+    const remote = fileReadQuery.data as { content?: string; text?: string } | string | undefined;
+    if (remote !== undefined) setEditorContent(typeof remote === "string" ? remote : remote?.content ?? remote?.text ?? "");
+  }, [fileReadQuery.data]);
+  const readAsBase64 = (file: File) => new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result).split(",")[1] ?? "");
+    reader.onerror = () => reject(new Error("Не удалось прочитать файл"));
+    reader.readAsDataURL(file);
+  });
+  const handleDrop = async (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    setDragActive(false);
+    const file = event.dataTransfer.files[0];
+    if (!file) return;
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error("Максимальный размер загрузки — 10 MiB");
+      return;
+    }
+    try {
+      uploadMutation.mutate({ serverId: server.id, parentPath, name: file.name, mimeType: file.type || "application/octet-stream", contentBase64: await readAsBase64(file) });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Не удалось прочитать файл");
+    }
+  };
   const segments =
     parentPath === "/" ? [] : parentPath.split("/").filter(Boolean);
   const goUp = () =>
@@ -1949,10 +1992,9 @@ function FileManagerView({ server }: { server: Server }) {
                   </div>
                   <button
                     onClick={() =>
-                      file.kind === "folder" &&
-                      setParentPath(
-                        `${parentPath === "/" ? "" : parentPath}/${file.name}`
-                      )
+                      file.kind === "folder"
+                        ? setParentPath(`${parentPath === "/" ? "" : parentPath}/${file.name}`)
+                        : setSelectedPath(`${file.path.replace(/\/$/, "") || ""}/${file.name}`)
                     }
                     className={cn(
                       "min-w-0 flex-1 text-left",
@@ -1995,6 +2037,38 @@ function FileManagerView({ server }: { server: Server }) {
           )}
         </CardContent>
       </Card>
+      <div
+        onDragEnter={event => { event.preventDefault(); setDragActive(true); }}
+        onDragOver={event => event.preventDefault()}
+        onDragLeave={event => { event.preventDefault(); setDragActive(false); }}
+        onDrop={handleDrop}
+        className={cn("rounded-[22px] border border-dashed p-6 text-center transition-colors", dragActive ? "border-[#8dbd2c] bg-[#effbd6] dark:bg-[#25321f]" : "border-[#dfe2d6] bg-[#fffdf7] dark:border-white/10 dark:bg-[#171f19]")}
+      >
+        <Upload className="mx-auto h-5 w-5 text-[#89ad36]" />
+        <p className="mt-2 text-sm font-medium">Перетащи файл сюда</p>
+        <p className="mt-1 text-xs text-[#899386]">До 10 MiB. Файл будет загружен в текущую папку Falix.</p>
+        {uploadMutation.isPending && <p className="mt-2 text-xs text-[#779d31]">Загрузка…</p>}
+      </div>
+      {selectedPath && (
+        <Card className="rounded-[24px] border-[#dfe2d6] bg-[#fffdf7] panel-shadow dark:border-white/10 dark:bg-[#171f19]">
+          <CardHeader className="border-b border-[#e7e9df] px-5 py-4 dark:border-white/10 sm:px-6">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="mono text-[10px] uppercase tracking-[0.15em] text-[#899386]">Text editor</p>
+                <CardTitle className="mt-1 text-base">{selectedPath}</CardTitle>
+              </div>
+              <Button onClick={() => fileWriteMutation.mutate({ serverId: server.id, path: selectedPath, content: editorContent })} disabled={fileReadQuery.isLoading || fileWriteMutation.isPending} className="h-9 rounded-lg bg-[#151a16] text-xs text-white dark:bg-[#c5ff3f] dark:text-[#151a16]">
+                <Save className="mr-1.5 h-3.5 w-3.5" /> Сохранить
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent className="p-4 sm:p-5">
+            {fileReadQuery.isLoading ? <p className="text-xs text-[#899386]">Открываем файл…</p> : (
+              <Textarea value={editorContent} onChange={event => setEditorContent(event.target.value)} className="min-h-[260px] resize-y rounded-xl bg-[#f7f6ef] font-mono text-xs leading-5 dark:bg-[#202a21]" spellCheck={false} />
+            )}
+          </CardContent>
+        </Card>
+      )}
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent className="rounded-[24px] border-[#dfe2d6] bg-[#fffdf7] dark:border-white/10 dark:bg-[#171f19]">
           <DialogHeader>
@@ -2359,7 +2433,17 @@ function BackupsView({
     </div>
   );
 }
-function SettingsView({ userName }: { userName: string }) {
+function SettingsView({ userName, server }: { userName: string; server?: Server }) {
+  const utils = trpc.useUtils();
+  const membersQuery = trpc.servers.members.list.useQuery({ id: server?.id ?? 0 }, { enabled: Boolean(server) });
+  const schedulesQuery = trpc.servers.schedules.list.useQuery(undefined, { enabled: Boolean(server) });
+  const [memberUserId, setMemberUserId] = useState("");
+  const [scheduleName, setScheduleName] = useState("Ночной перезапуск");
+  const [cronExpression, setCronExpression] = useState("0 4 * * *");
+  const memberMutation = trpc.servers.members.upsert.useMutation({ onSuccess: () => { void membersQuery.refetch(); toast.success("Роль сохранена"); }, onError: error => toast.error(error.message) });
+  const webhookMutation = trpc.servers.webhooks.register.useMutation({ onSuccess: () => toast.success("Falix webhook зарегистрирован"), onError: error => toast.error(error.message) });
+  const scheduleMutation = trpc.servers.schedules.createRestart.useMutation({ onSuccess: () => { void schedulesQuery.refetch(); toast.success("Расписание создано"); }, onError: error => toast.error(error.message) });
+
   return (
     <div className="max-w-3xl space-y-6">
       <div>
@@ -2403,6 +2487,29 @@ function SettingsView({ userName }: { userName: string }) {
           />
         </CardContent>
       </Card>
+      {server ? (
+        <>
+          <Card className="rounded-[24px] border-[#dfe2d6] bg-[#fffdf7] panel-shadow dark:border-white/10 dark:bg-[#171f19]">
+            <CardHeader><CardTitle className="text-base">Команда сервера</CardTitle><p className="text-xs text-[#899386]">Владелец может назначить администратора, оператора или наблюдателя по ID пользователя Manus.</p></CardHeader>
+            <CardContent className="space-y-3">
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <Input value={memberUserId} onChange={event => setMemberUserId(event.target.value)} placeholder="ID пользователя" className="h-10 rounded-lg bg-[#f7f6ef] dark:bg-[#202a21]" />
+                <select defaultValue="operator" id="member-role" className="h-10 rounded-lg border border-[#dfe2d6] bg-[#f7f6ef] px-3 text-xs dark:border-white/10 dark:bg-[#202a21]"><option value="admin">Администратор</option><option value="operator">Оператор</option><option value="viewer">Наблюдатель</option></select>
+                <Button disabled={!memberUserId || memberMutation.isPending} onClick={() => { const role = (document.getElementById("member-role") as HTMLSelectElement)?.value as "admin" | "operator" | "viewer"; memberMutation.mutate({ serverId: server.id, userId: Number(memberUserId), role }); }} className="h-10 rounded-lg bg-[#151a16] text-xs text-white dark:bg-[#c5ff3f] dark:text-[#151a16]">Назначить</Button>
+              </div>
+              <div className="space-y-2">{(membersQuery.data ?? []).map(member => <div key={member.userId} className="flex items-center justify-between rounded-lg bg-[#eff2e7] px-3 py-2 text-xs dark:bg-[#202a21]"><span>{member.name || member.email || `User #${member.userId}`}</span><Badge variant="outline">{member.role}</Badge></div>)}</div>
+            </CardContent>
+          </Card>
+          <Card className="rounded-[24px] border-[#dfe2d6] bg-[#fffdf7] panel-shadow dark:border-white/10 dark:bg-[#171f19]">
+            <CardHeader><CardTitle className="text-base">Falix webhooks</CardTitle><p className="text-xs text-[#899386]">События Falix сохраняются только после проверки HMAC-подписи.</p></CardHeader>
+            <CardContent className="space-y-3"><Input readOnly value={`${window.location.origin}/api/falix/webhooks/${server.id}/main`} className="h-10 rounded-lg bg-[#f7f6ef] text-xs dark:bg-[#202a21]" /><Button disabled={webhookMutation.isPending} onClick={() => webhookMutation.mutate({ serverId: server.id, url: `${window.location.origin}/api/falix/webhooks/${server.id}/main`, events: ["server.started", "server.stopped", "server.crashed", "player.joined", "player.left"] })} className="h-10 rounded-lg bg-[#151a16] text-xs text-white dark:bg-[#c5ff3f] dark:text-[#151a16]">{webhookMutation.isPending ? "Подключение…" : "Подключить события"}</Button></CardContent>
+          </Card>
+          <Card className="rounded-[24px] border-[#dfe2d6] bg-[#fffdf7] panel-shadow dark:border-white/10 dark:bg-[#171f19]">
+            <CardHeader><CardTitle className="text-base">Автоматический перезапуск</CardTitle><p className="text-xs text-[#899386]">Cron выражение задаётся в UTC; restart выполняется через Heartbeat callback и Falix API.</p></CardHeader>
+            <CardContent className="space-y-3"><div className="flex flex-col gap-2 sm:flex-row"><Input value={scheduleName} onChange={event => setScheduleName(event.target.value)} className="h-10 rounded-lg bg-[#f7f6ef] text-xs dark:bg-[#202a21]" /><Input value={cronExpression} onChange={event => setCronExpression(event.target.value)} placeholder="0 4 * * *" className="h-10 rounded-lg bg-[#f7f6ef] font-mono text-xs dark:bg-[#202a21]" /><Button disabled={scheduleMutation.isPending} onClick={() => scheduleMutation.mutate({ serverId: server.id, name: scheduleName, cronExpression })} className="h-10 rounded-lg bg-[#151a16] text-xs text-white dark:bg-[#c5ff3f] dark:text-[#151a16]">Создать</Button></div><div className="space-y-2">{(schedulesQuery.data ?? []).filter(item => item.serverId === server.id).map(item => <div key={item.id} className="flex items-center justify-between rounded-lg bg-[#eff2e7] px-3 py-2 text-xs dark:bg-[#202a21]"><span>{item.name} · {item.cronExpression}</span><Badge variant="outline">{item.enabled ? "активно" : "пауза"}</Badge></div>)}</div></CardContent>
+          </Card>
+        </>
+      ) : null}
     </div>
   );
 }

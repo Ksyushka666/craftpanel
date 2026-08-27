@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { COOKIE_NAME } from "@shared/const";
+import { parse as parseCookie } from "cookie";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
@@ -17,8 +18,12 @@ import {
   getOwnedInstallations,
   getOwnedServer,
   getOwnedServers,
+  getAccessibleServers,
   getRecentServerActions,
   getRecentServerLogs,
+  getServerMembers,
+  getServerAccess,
+  listSchedulesForOwner,
   logServerAction,
   requestOwnedBackupRestore,
   setOwnedBackupArtifactStatus,
@@ -26,9 +31,20 @@ import {
   updateOwnedServerConfig,
   updateOwnedServerStatus,
   updateOwnedServerTelemetry,
+  upsertServerMember,
+  deleteServerMember,
+  createScheduleRecord,
+  updateScheduleRecord,
+  getOwnedSchedules,
+  saveServerWebhook,
+  getEnabledWebhookForServer,
 } from "./db";
+import { createHeartbeatJob, updateHeartbeatJob } from "./_core/heartbeat";
 import {
   falixCreateDownload,
+  falixCreateWebhook,
+  falixListWebhooks,
+  falixUploadFile,
   falixCreateFolder,
   falixGetOnlinePlayers,
   falixGetServerDetails,
@@ -49,6 +65,30 @@ function mapFalixState(state: string | undefined): "online" | "offline" | "start
   if (state === "starting") return "starting";
   if (state === "stopping") return "stopping";
   return "offline";
+}
+
+const roleRank: Record<"owner" | "admin" | "operator" | "viewer", number> = { owner: 3, admin: 2, operator: 1, viewer: 0 };
+
+function validateServerPath(path: string) {
+  if (!path.startsWith("/") || path.includes("..") || path.includes("\\0")) throw new Error("Invalid server path");
+  return path;
+}
+
+export function getSessionCredential(req: { headers: { cookie?: string; authorization?: string } }) {
+  const authorization = req.headers.authorization;
+  if (authorization?.startsWith("Bearer ")) return authorization.slice(7);
+  return parseCookie(req.headers.cookie ?? "")[COOKIE_NAME] ?? "";
+}
+
+function validateTextFile(path: string) {
+  const allowed = /\.(txt|log|json|properties|yml|yaml|toml|cfg|conf|ini|xml|js|ts|css|md|html)$/i;
+  if (!allowed.test(path)) throw new Error("Only text configuration files can be edited");
+}
+
+async function requireServerAccess(userId: number, serverId: number, minimum: "viewer" | "operator" | "admin") {
+  const access = await getServerAccess(userId, serverId);
+  if (!access || !access.server || roleRank[access.role] < roleRank[minimum]) throw new Error("Server access denied");
+  return access.server;
 }
 
 async function syncFalixServer(ownerId: number, localServerId: number) {
@@ -103,11 +143,11 @@ export const appRouter = router({
 
   servers: router({
     list: protectedProcedure.query(async ({ ctx }) => {
-      const servers = await getOwnedServers(ctx.user.id);
+      const servers = await getAccessibleServers(ctx.user.id);
       if (!falixIsConfigured() || servers.length === 0) return servers;
       try {
-        await syncFalixServer(ctx.user.id, servers[0].id);
-        return getOwnedServers(ctx.user.id);
+        await Promise.all(servers.map(server => syncFalixServer(ctx.user.id, server.id)));
+        return getAccessibleServers(ctx.user.id);
       } catch (error) {
         console.warn("[Falix] Telemetry sync failed:", error);
         return servers;
@@ -129,8 +169,7 @@ export const appRouter = router({
         command: z.string().trim().max(500).optional(),
       }))
       .mutation(async ({ ctx, input }) => {
-        const server = await getOwnedServer(ctx.user.id, input.id);
-        if (!server) throw new Error("Server not found");
+        const server = await requireServerAccess(ctx.user.id, input.id, "operator");
         if (input.action === "command" && !input.command) throw new Error("Command is required");
         let output: string;
         if (falixIsConfigured()) {
@@ -178,8 +217,7 @@ export const appRouter = router({
     logs: protectedProcedure
       .input(serverIdInput)
       .query(async ({ ctx, input }) => {
-        const server = await getOwnedServer(ctx.user.id, input.id);
-        if (!server) throw new Error("Server not found");
+        await requireServerAccess(ctx.user.id, input.id, "viewer");
         const localLogs = await getRecentServerLogs(ctx.user.id, input.id);
         if (!falixIsConfigured()) return localLogs;
         try {
@@ -239,8 +277,7 @@ export const appRouter = router({
       install: protectedProcedure
         .input(z.object({ serverId: z.number().int().positive(), catalogType: z.enum(["modpack", "plugin", "map"]), name: z.string().min(2).max(160), version: z.string().min(1).max(64) }))
         .mutation(async ({ ctx, input }) => {
-          const server = await getOwnedServer(ctx.user.id, input.serverId);
-          if (!server) throw new Error("Server not found");
+          await requireServerAccess(ctx.user.id, input.serverId, "operator");
           const { serverId, ...data } = input;
           await createOwnedInstallation(ctx.user.id, serverId, data);
           await logServerAction(ctx.user.id, serverId, "catalog_install", input.name, `Installed ${input.name}`);
@@ -251,8 +288,7 @@ export const appRouter = router({
       list: protectedProcedure
         .input(z.object({ serverId: z.number().int().positive(), parentPath: z.string().default("/") }))
         .query(async ({ ctx, input }) => {
-          const server = await getOwnedServer(ctx.user.id, input.serverId);
-          if (!server) throw new Error("Server not found");
+          await requireServerAccess(ctx.user.id, input.serverId, "viewer");
           if (falixIsConfigured()) {
             const remoteFiles = await falixListFiles(input.parentPath, input.serverId);
             return remoteFiles.map((file, index) => ({
@@ -273,26 +309,40 @@ export const appRouter = router({
       read: protectedProcedure
         .input(z.object({ serverId: z.number().int().positive(), path: z.string().min(1) }))
         .query(async ({ ctx, input }) => {
-          const server = await getOwnedServer(ctx.user.id, input.serverId);
-          if (!server) throw new Error("Server not found");
+          await requireServerAccess(ctx.user.id, input.serverId, "viewer");
           if (!falixIsConfigured()) throw new Error("Remote file provider is not configured");
+          validateServerPath(input.path);
+          validateTextFile(input.path);
           return falixReadFile(input.path, input.serverId);
         }),
       write: protectedProcedure
         .input(z.object({ serverId: z.number().int().positive(), path: z.string().min(1), content: z.string().max(64 * 1024) }))
         .mutation(async ({ ctx, input }) => {
-          const server = await getOwnedServer(ctx.user.id, input.serverId);
-          if (!server) throw new Error("Server not found");
+          await requireServerAccess(ctx.user.id, input.serverId, "operator");
           if (!falixIsConfigured()) throw new Error("Remote file provider is not configured");
+          validateServerPath(input.path);
+          validateTextFile(input.path);
           await falixWriteFile(input.path, input.content, input.serverId);
           await logServerAction(ctx.user.id, input.serverId, "file_write", input.path, `Updated ${input.path}`);
+          return { success: true };
+        }),
+      upload: protectedProcedure
+        .input(z.object({ serverId: z.number().int().positive(), parentPath: z.string().default("/"), name: z.string().trim().min(1).max(120), mimeType: z.string().trim().min(1).max(120), contentBase64: z.string().min(1).max(14_000_000) }))
+        .mutation(async ({ ctx, input }) => {
+          await requireServerAccess(ctx.user.id, input.serverId, "operator");
+          if (!falixIsConfigured()) throw new Error("Remote file provider is not configured");
+          validateServerPath(input.parentPath);
+          if (input.name.includes("..") || input.name.includes("/") || input.name.includes("\\\\")) throw new Error("Invalid upload filename");
+          const bytes = Buffer.from(input.contentBase64, "base64");
+          if (bytes.byteLength > 10 * 1024 * 1024) throw new Error("Upload is limited to 10 MiB");
+          await falixUploadFile(input.parentPath, input.name, bytes, input.mimeType, input.serverId);
+          await logServerAction(ctx.user.id, input.serverId, "file_upload", input.name, `${input.name} uploaded`);
           return { success: true };
         }),
       download: protectedProcedure
         .input(z.object({ serverId: z.number().int().positive(), path: z.string().min(1) }))
         .mutation(async ({ ctx, input }) => {
-          const server = await getOwnedServer(ctx.user.id, input.serverId);
-          if (!server) throw new Error("Server not found");
+          await requireServerAccess(ctx.user.id, input.serverId, "viewer");
           if (!falixIsConfigured()) throw new Error("Remote file provider is not configured");
           const result = await falixCreateDownload(input.path, input.serverId);
           return { success: true, ...result };
@@ -300,8 +350,7 @@ export const appRouter = router({
       create: protectedProcedure
         .input(z.object({ serverId: z.number().int().positive(), parentPath: z.string().default("/"), name: z.string().min(1).max(120), kind: z.enum(["file", "folder"]) }))
         .mutation(async ({ ctx, input }) => {
-          const server = await getOwnedServer(ctx.user.id, input.serverId);
-          if (!server) throw new Error("Server not found");
+          await requireServerAccess(ctx.user.id, input.serverId, "operator");
           if (falixIsConfigured()) {
             if (input.kind === "folder") {
               await falixCreateFolder(input.parentPath, input.name, input.serverId);
@@ -319,8 +368,7 @@ export const appRouter = router({
       delete: protectedProcedure
         .input(z.object({ serverId: z.number().int().positive(), path: z.string().min(1) }))
         .mutation(async ({ ctx, input }) => {
-          const server = await getOwnedServer(ctx.user.id, input.serverId);
-          if (!server) throw new Error("Server not found");
+          await requireServerAccess(ctx.user.id, input.serverId, "operator");
           if (falixIsConfigured()) {
             await falixDeleteFiles([input.path], input.serverId);
           } else {
@@ -329,6 +377,45 @@ export const appRouter = router({
           await logServerAction(ctx.user.id, input.serverId, "file_delete", input.path, `Deleted ${input.path}`);
           return { success: true };
         }),
+    }),
+    members: router({
+      list: protectedProcedure.input(serverIdInput).query(({ ctx, input }) => getServerMembers(ctx.user.id, input.id)),
+      upsert: protectedProcedure.input(z.object({ serverId: z.number().int().positive(), userId: z.number().int().positive(), role: z.enum(["admin", "operator", "viewer"]) })).mutation(({ ctx, input }) => upsertServerMember(ctx.user.id, input.serverId, input.userId, input.role)),
+      remove: protectedProcedure.input(z.object({ serverId: z.number().int().positive(), userId: z.number().int().positive() })).mutation(({ ctx, input }) => deleteServerMember(ctx.user.id, input.serverId, input.userId)),
+    }),
+    webhooks: router({
+      list: protectedProcedure.input(serverIdInput).query(async ({ ctx, input }) => {
+        const server = await getOwnedServer(ctx.user.id, input.id);
+        if (!server) throw new Error("Server not found");
+        if (!falixIsConfigured()) return [];
+        return falixListWebhooks(input.id);
+      }),
+      register: protectedProcedure.input(z.object({ serverId: z.number().int().positive(), url: z.string().url().refine(value => value.startsWith("https://"), "Webhook URL must use HTTPS"), events: z.array(z.string().trim().min(1).max(100)).min(1).max(20) })).mutation(async ({ ctx, input }) => {
+        const server = await getOwnedServer(ctx.user.id, input.serverId);
+        if (!server) throw new Error("Server not found");
+        if (!falixIsConfigured()) throw new Error("Falix provider is not configured");
+        const hook = await falixCreateWebhook(input.url, input.events, input.serverId);
+        await saveServerWebhook(ctx.user.id, { serverId: input.serverId, externalHookId: "main", secret: hook.secret });
+        return hook;
+      }),
+    }),
+    schedules: router({
+      list: protectedProcedure.query(({ ctx }) => listSchedulesForOwner(ctx.user.id)),
+      createRestart: protectedProcedure.input(z.object({ serverId: z.number().int().positive(), name: z.string().trim().min(2).max(120), cronExpression: z.string().trim().min(9).max(64) })).mutation(async ({ ctx, input }) => {
+        const server = await getOwnedServer(ctx.user.id, input.serverId);
+        if (!server) throw new Error("Server not found");
+        const session = getSessionCredential(ctx.req);
+        const job = await createHeartbeatJob({ name: `restart-${input.serverId}-${Date.now()}`, cron: input.cronExpression, path: "/api/scheduled/restart-server", description: `Restart ${server.name}` }, session);
+        return createScheduleRecord(ctx.user.id, { serverId: input.serverId, name: input.name, cronExpression: input.cronExpression, taskUid: job.taskUid });
+      }),
+      setEnabled: protectedProcedure.input(z.object({ id: z.number().int().positive(), enabled: z.boolean() })).mutation(async ({ ctx, input }) => {
+        const schedules = await listSchedulesForOwner(ctx.user.id);
+        const schedule = schedules.find(item => item.id === input.id);
+        if (!schedule?.taskUid) throw new Error("Schedule not found");
+        const session = getSessionCredential(ctx.req);
+        await updateHeartbeatJob(schedule.taskUid, { enable: input.enabled }, session);
+        return updateScheduleRecord(ctx.user.id, input.id, { enabled: input.enabled ? 1 : 0 });
+      }),
     }),
     createBackup: protectedProcedure
       .input(z.object({ serverId: z.number().int().positive(), name: z.string().trim().min(2).max(160) }))

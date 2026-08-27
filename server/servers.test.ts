@@ -3,6 +3,9 @@ import type { TrpcContext } from "./_core/context";
 
 const falixMocks = vi.hoisted(() => ({
   falixCreateDownload: vi.fn(),
+  falixCreateWebhook: vi.fn(),
+  falixListWebhooks: vi.fn(),
+  falixUploadFile: vi.fn(),
   falixCreateFolder: vi.fn(),
   falixGetOnlinePlayers: vi.fn(),
   falixGetServerDetails: vi.fn(),
@@ -20,7 +23,9 @@ vi.mock("./falix", () => falixMocks);
 
 const dbMocks = vi.hoisted(() => ({
   getOwnedServers: vi.fn(),
+  getAccessibleServers: vi.fn(),
   getOwnedServer: vi.fn(),
+  getServerAccess: vi.fn(),
   updateOwnedServerStatus: vi.fn(),
   updateOwnedServerTelemetry: vi.fn(),
   logServerAction: vi.fn(),
@@ -99,6 +104,8 @@ describe("servers ownership and actions", () => {
     falixMocks.falixGetStatus.mockResolvedValue({ state: "offline", resources: {} });
     falixMocks.falixGetOnlinePlayers.mockResolvedValue({ online_players: 0 });
     dbMocks.getOwnedServer.mockResolvedValue(sampleServer);
+    dbMocks.getAccessibleServers.mockResolvedValue([sampleServer]);
+    dbMocks.getServerAccess.mockResolvedValue({ server: sampleServer, role: "owner" });
     dbMocks.getOwnedBackup.mockResolvedValue({
       id: 9,
       serverId: 7,
@@ -116,10 +123,11 @@ describe("servers ownership and actions", () => {
 
   it("rejects an action when the server is not owned by the current user", async () => {
     dbMocks.getOwnedServer.mockResolvedValue(undefined);
+    dbMocks.getServerAccess.mockResolvedValue(undefined);
     const caller = appRouter.createCaller(createContext(99));
     await expect(
       caller.servers.action({ id: 7, action: "start" })
-    ).rejects.toThrow("Server not found");
+    ).rejects.toThrow("Server access denied");
     expect(dbMocks.updateOwnedServerStatus).not.toHaveBeenCalled();
     expect(dbMocks.logServerAction).not.toHaveBeenCalled();
   });
@@ -174,7 +182,23 @@ describe("servers ownership and actions", () => {
     dbMocks.getOwnedServers.mockResolvedValue([sampleServer]);
     const caller = appRouter.createCaller(createContext(42));
     await caller.servers.list();
-    expect(dbMocks.getOwnedServers).toHaveBeenCalledWith(42);
+    expect(dbMocks.getAccessibleServers).toHaveBeenCalledWith(42);
+  });
+
+  it("lists a server shared through the permission-aware accessor", async () => {
+    dbMocks.getAccessibleServers.mockResolvedValue([sampleServer]);
+    const caller = appRouter.createCaller(createContext(99));
+    const result = await caller.servers.list();
+    expect(result).toHaveLength(1);
+    expect(result[0].id).toBe(7);
+    expect(dbMocks.getAccessibleServers).toHaveBeenCalledWith(99);
+  });
+
+  it("allows an operator membership to execute lifecycle actions", async () => {
+    dbMocks.getServerAccess.mockResolvedValue({ server: sampleServer, role: "operator" });
+    const caller = appRouter.createCaller(createContext(99));
+    const result = await caller.servers.action({ id: 7, action: "restart" });
+    expect(result.success).toBe(true);
   });
 
   it("persists a catalog installation only for an owned server", async () => {
@@ -226,6 +250,14 @@ describe("servers ownership and actions", () => {
     expect(falixMocks.falixDeleteFiles).toHaveBeenCalledWith(["/plugins"], 7);
   });
 
+  it("rejects unsafe file paths and unsupported editor extensions", async () => {
+    falixMocks.falixIsConfigured.mockReturnValue(true);
+    const caller = appRouter.createCaller(createContext(42));
+    await expect(caller.servers.files.read({ serverId: 7, path: "/../secrets.json" })).rejects.toThrow("Invalid server path");
+    await expect(caller.servers.files.write({ serverId: 7, path: "/plugins/example.jar", content: "x" })).rejects.toThrow("Only text configuration files");
+    await expect(caller.servers.files.upload({ serverId: 7, parentPath: "/", name: "huge.bin", mimeType: "application/octet-stream", contentBase64: "a".repeat(14_000_000) })).rejects.toThrow("Upload is limited to 10 MiB");
+  });
+
   it("keeps server log queries owner-scoped", async () => {
     const caller = appRouter.createCaller(createContext(42));
     dbMocks.getRecentServerLogs.mockResolvedValue([
@@ -240,7 +272,7 @@ describe("servers ownership and actions", () => {
       },
     ]);
     const result = await caller.servers.logs({ id: 7 });
-    expect(dbMocks.getOwnedServer).toHaveBeenCalledWith(42, 7);
+    expect(dbMocks.getServerAccess).toHaveBeenCalledWith(42, 7);
     expect(dbMocks.getRecentServerLogs).toHaveBeenCalledWith(42, 7);
     expect(result).toHaveLength(1);
   });

@@ -43,6 +43,13 @@
       "when": 1787774593387,
       "tag": "0005_neat_lyja",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "5",
+      "when": 1787851666146,
+      "tag": "0006_slow_human_robot",
+      "breakpoints": true
     }
   ]
 }

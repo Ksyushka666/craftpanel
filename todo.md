@@ -75,3 +75,16 @@
 - [x] Add real runtime-backed log streaming or explicitly present latest.log polling as a limited fallback instead of full live console streaming
 - [x] Extend file-provider integration with authenticated content read/write/download procedures and documented binary upload boundary
 - [x] Add Vitest coverage for telemetry persistence, remote log fallback, and Falix-backed file mutations
+- [x] Add authenticated text-file editor with safe size/type/path validation
+- [x] Add drag-and-drop file upload using Falix signed upload URL and provider boundary
+- [x] Add verified Falix webhook endpoint with replay-safe event handling
+- [x] Add multi-admin membership and role/permission model with owner/admin/operator/viewer server permissions
+- [x] Add automatic restart action and persisted scheduled restart jobs
+- [x] Add scheduler callback handlers under /api/scheduled with task UID ownership
+- [x] Add admin UI for roles, webhook registration, and schedules
+- [x] Add Vitest coverage for upload/editor boundaries, webhook verification, and permission-aware routes
+- [ ] Run full validation and publish the automation/admin checkpoint
+- [x] Use collision-safe raw-body hash and provider delivery identity for webhook idempotency
+- [x] Include shared server memberships in servers.list and test admin/operator/viewer visibility
+- [x] Support both cookie and Authorization-header sessions for Heartbeat schedule management
+- [x] Add tests for invalid paths, unsupported text extensions, upload size limits, and shared-server access

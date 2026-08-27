@@ -119,6 +119,27 @@ export async function falixReadFile(path: string, localServerId?: number) {
   return falixRequest<unknown>(`/servers/${serverId}/files/content?path=${encodeURIComponent(path)}`);
 }
 
+export async function falixCreateUpload(localServerId?: number) {
+  const { serverId } = getFalixConfig(localServerId);
+  return falixRequest<{ url?: string; expires_at?: string }>(`/servers/${serverId}/files/upload`, {
+    method: "POST",
+    headers: { "Idempotency-Key": `craftpanel-upload-${serverId}-${Date.now()}` },
+  }, localServerId);
+}
+
+export async function falixUploadFile(directory: string, filename: string, bytes: Uint8Array, mimeType: string, localServerId?: number) {
+  const signed = await falixCreateUpload(localServerId);
+  if (!signed.url) throw new Error("Falix did not return an upload URL");
+  const uploadUrl = new URL(signed.url);
+  uploadUrl.searchParams.set("directory", directory);
+  const form = new FormData();
+  const fileBytes = new Uint8Array(bytes);
+  form.append("file", new Blob([fileBytes.buffer as ArrayBuffer], { type: mimeType }), filename);
+  const response = await fetch(uploadUrl, { method: "POST", body: form });
+  if (!response.ok) throw new Error(`Falix upload failed (${response.status})`);
+  return { success: true, expiresAt: signed.expires_at };
+}
+
 export async function falixCreateDownload(path: string, localServerId?: number) {
   const { serverId } = getFalixConfig(localServerId);
   return falixRequest<{ url?: string; expires_at?: string }>(`/servers/${serverId}/files/download`, {
@@ -126,6 +147,29 @@ export async function falixCreateDownload(path: string, localServerId?: number) 
     headers: { "Idempotency-Key": `craftpanel-download-${serverId}-${Date.now()}` },
     body: JSON.stringify({ path }),
   });
+}
+
+export async function falixCreateWebhook(url: string, events: string[], localServerId?: number) {
+  const { serverId } = getFalixConfig(localServerId);
+  return falixRequest<{ id: string; secret: string; enabled?: boolean }>(`/servers/${serverId}/hooks`, {
+    method: "POST",
+    headers: { "Idempotency-Key": `craftpanel-hook-${serverId}-${Date.now()}` },
+    body: JSON.stringify({ url, events }),
+  }, localServerId);
+}
+
+export async function falixListWebhooks(localServerId?: number) {
+  const { serverId } = getFalixConfig(localServerId);
+  return falixRequest<unknown[]>(`/servers/${serverId}/hooks`, {}, localServerId);
+}
+
+export async function falixUpdateWebhook(hookId: string, patch: { url?: string; events?: string[]; enabled?: boolean }, localServerId?: number) {
+  const { serverId } = getFalixConfig(localServerId);
+  return falixRequest<unknown>(`/servers/${serverId}/hooks/${encodeURIComponent(hookId)}`, {
+    method: "PATCH",
+    headers: { "Idempotency-Key": `craftpanel-hook-update-${serverId}-${hookId}-${Date.now()}` },
+    body: JSON.stringify(patch),
+  }, localServerId);
 }
 
 export async function falixCreateConsoleSession(localServerId?: number) {

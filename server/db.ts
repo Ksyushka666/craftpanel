@@ -9,6 +9,10 @@ import {
   serverBackups,
   serverFiles,
   serverLogs,
+  serverMembers,
+  serverSchedules,
+  serverWebhooks,
+  webhookEvents,
   users,
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
@@ -80,6 +84,20 @@ export async function getOwnedServers(ownerId: number) {
   const db = await getDb();
   if (!db) return [];
   return db.select().from(minecraftServers).where(eq(minecraftServers.ownerId, ownerId)).orderBy(desc(minecraftServers.updatedAt));
+}
+
+export type ServerAccessRole = "owner" | "admin" | "operator" | "viewer";
+
+export async function getServerAccess(userId: number, serverId: number): Promise<{ server: Awaited<ReturnType<typeof getOwnedServer>>; role: ServerAccessRole } | undefined> {
+  const server = await getOwnedServer(userId, serverId);
+  if (server) return { server, role: "owner" };
+  const db = await getDb();
+  if (!db) return undefined;
+  const rows = await db.select({ server: minecraftServers, role: serverMembers.role }).from(serverMembers)
+    .innerJoin(minecraftServers, eq(serverMembers.serverId, minecraftServers.id))
+    .where(and(eq(serverMembers.userId, userId), eq(serverMembers.serverId, serverId))).limit(1);
+  const row = rows[0];
+  return row ? { server: row.server, role: row.role } : undefined;
 }
 
 export async function getOwnedServer(ownerId: number, serverId: number) {
@@ -343,4 +361,119 @@ export async function createOrGetBackupArtifact(ownerId: number, backupId: numbe
   if (!artifact.key || !artifact.url) throw new Error("Runtime returned an invalid backup artifact");
   await db.update(serverBackups).set({ artifactKey: artifact.key, sizeGb: artifact.sizeGb ?? backup.sizeGb }).where(and(eq(serverBackups.id, backupId), eq(serverBackups.ownerId, ownerId)));
   return artifact;
+}
+
+export async function getServerMembers(ownerId: number, serverId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  const server = await getOwnedServer(ownerId, serverId);
+  if (!server) throw new Error("Server not found");
+  return db.select({ id: serverMembers.id, userId: serverMembers.userId, role: serverMembers.role, createdAt: serverMembers.createdAt, name: users.name, email: users.email })
+    .from(serverMembers).innerJoin(users, eq(serverMembers.userId, users.id)).where(eq(serverMembers.serverId, serverId));
+}
+
+export async function upsertServerMember(ownerId: number, serverId: number, userId: number, role: "admin" | "operator" | "viewer") {
+  const db = await getDb();
+  if (!db) throw new Error("Database is not available");
+  const server = await getOwnedServer(ownerId, serverId);
+  if (!server) throw new Error("Server not found");
+  await db.insert(serverMembers).values({ serverId, userId, role }).onDuplicateKeyUpdate({ set: { role } });
+  return getServerMembers(ownerId, serverId);
+}
+
+export async function deleteServerMember(ownerId: number, serverId: number, userId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database is not available");
+  const server = await getOwnedServer(ownerId, serverId);
+  if (!server) throw new Error("Server not found");
+  await db.delete(serverMembers).where(and(eq(serverMembers.serverId, serverId), eq(serverMembers.userId, userId)));
+  return getServerMembers(ownerId, serverId);
+}
+
+export async function getOwnedSchedules(ownerId: number, serverId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(serverSchedules).where(and(eq(serverSchedules.ownerId, ownerId), eq(serverSchedules.serverId, serverId))).orderBy(desc(serverSchedules.createdAt));
+}
+
+export async function createScheduleRecord(ownerId: number, data: { serverId: number; name: string; cronExpression: string; taskUid: string }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database is not available");
+  await db.insert(serverSchedules).values({ ...data, ownerId, action: "restart", enabled: 1 });
+  return getOwnedSchedules(ownerId, data.serverId);
+}
+
+export async function updateScheduleRecord(ownerId: number, id: number, patch: { enabled?: number; taskUid?: string; lastRunAt?: Date }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database is not available");
+  await db.update(serverSchedules).set(patch).where(and(eq(serverSchedules.id, id), eq(serverSchedules.ownerId, ownerId)));
+  const rows = await db.select().from(serverSchedules).where(and(eq(serverSchedules.id, id), eq(serverSchedules.ownerId, ownerId))).limit(1);
+  return rows[0];
+}
+
+export async function getWebhookByExternalId(serverId: number, externalHookId: string) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const rows = await db.select().from(serverWebhooks).where(and(eq(serverWebhooks.serverId, serverId), eq(serverWebhooks.externalHookId, externalHookId))).limit(1);
+  return rows[0];
+}
+
+export async function saveServerWebhook(ownerId: number, data: { serverId: number; externalHookId: string; secret: string }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database is not available");
+  await db.insert(serverWebhooks).values({ ...data, ownerId, enabled: 1 }).onDuplicateKeyUpdate({ set: { secret: data.secret, enabled: 1 } });
+  return getWebhookByExternalId(data.serverId, data.externalHookId);
+}
+
+export async function recordWebhookEvent(webhookId: number, eventKey: string, eventType: string, payload: string) {
+  const db = await getDb();
+  if (!db) return false;
+  try {
+    await db.insert(webhookEvents).values({ webhookId, eventKey, eventType, payload });
+    return true;
+  } catch (error) {
+    if (/duplicate|unique/i.test(String(error))) return false;
+    throw error;
+  }
+}
+
+export async function markWebhookDelivery(webhookId: number, eventKey: string, eventType: string, payload: string, occurredAt?: Date) {
+  const db = await getDb();
+  if (!db) return false;
+  const inserted = await recordWebhookEvent(webhookId, eventKey, eventType, payload);
+  if (!inserted) return false;
+  await db.update(serverWebhooks).set({ lastEventId: eventKey, lastEventAt: occurredAt ?? new Date() }).where(eq(serverWebhooks.id, webhookId));
+  return true;
+}
+
+export async function getScheduleByTaskUid(taskUid: string) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const rows = await db.select().from(serverSchedules).where(eq(serverSchedules.taskUid, taskUid)).limit(1);
+  return rows[0];
+}
+
+export async function listSchedulesForOwner(ownerId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(serverSchedules).where(eq(serverSchedules.ownerId, ownerId)).orderBy(desc(serverSchedules.createdAt));
+}
+
+export async function getEnabledWebhookForServer(serverId: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const rows = await db.select().from(serverWebhooks).where(and(eq(serverWebhooks.serverId, serverId), eq(serverWebhooks.enabled, 1))).limit(1);
+  return rows[0];
+}
+
+export async function getAccessibleServers(userId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  const owned = await db.select().from(minecraftServers).where(eq(minecraftServers.ownerId, userId));
+  const shared = await db.select({ server: minecraftServers }).from(serverMembers)
+    .innerJoin(minecraftServers, eq(serverMembers.serverId, minecraftServers.id))
+    .where(eq(serverMembers.userId, userId));
+  const byId = new Map<number, typeof minecraftServers.$inferSelect>();
+  [...owned, ...shared.map(row => row.server)].forEach(server => byId.set(server.id, server));
+  return Array.from(byId.values()).sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
 }
