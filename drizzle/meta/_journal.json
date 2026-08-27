@@ -50,6 +50,13 @@
       "when": 1787851666146,
       "tag": "0006_slow_human_robot",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "5",
+      "when": 1787854932683,
+      "tag": "0007_brainy_red_ghost",
+      "breakpoints": true
     }
   ]
 }

@@ -1,5 +1,8 @@
 const FALIX_BASE_URL = "https://client.falixnodes.net/api/v2";
 
+import { createReadStream } from "node:fs";
+import { Readable } from "node:stream";
+
 export type FalixPowerSignal = "start" | "stop" | "restart" | "kill";
 export type FalixStatus = {
   state?: "offline" | "starting" | "running" | "stopping";
@@ -136,6 +139,32 @@ export async function falixUploadFile(directory: string, filename: string, bytes
   const fileBytes = new Uint8Array(bytes);
   form.append("file", new Blob([fileBytes.buffer as ArrayBuffer], { type: mimeType }), filename);
   const response = await fetch(uploadUrl, { method: "POST", body: form });
+  if (!response.ok) throw new Error(`Falix upload failed (${response.status})`);
+  return { success: true, expiresAt: signed.expires_at };
+}
+
+export async function falixUploadFileFromPath(directory: string, filename: string, filePath: string, fileSize: number, mimeType: string, localServerId?: number) {
+  const signed = await falixCreateUpload(localServerId);
+  if (!signed.url) throw new Error("Falix did not return an upload URL");
+  const uploadUrl = new URL(signed.url);
+  uploadUrl.searchParams.set("directory", directory);
+  const boundary = `----craftpanel-${Date.now().toString(16)}`;
+  const preamble = Buffer.from(`--${boundary}\\r\\nContent-Disposition: form-data; name="file"; filename="${filename.replace(/["\\\\\\r\\n]/g, "_")}"\\r\\nContent-Type: ${mimeType}\\r\\n\\r\\n`);
+  const ending = Buffer.from(`\\r\\n--${boundary}--\\r\\n`);
+  const body = Readable.from((async function* () {
+    yield preamble;
+    for await (const chunk of createReadStream(filePath)) yield chunk;
+    yield ending;
+  })());
+  const response = await fetch(uploadUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": `multipart/form-data; boundary=${boundary}`,
+      "Content-Length": String(preamble.length + fileSize + ending.length),
+    },
+    body: body as unknown as BodyInit,
+    duplex: "half",
+  } as RequestInit & { duplex: "half" });
   if (!response.ok) throw new Error(`Falix upload failed (${response.status})`);
   return { success: true, expiresAt: signed.expires_at };
 }

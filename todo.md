@@ -88,3 +88,17 @@
 - [x] Include shared server memberships in servers.list and test admin/operator/viewer visibility
 - [x] Support both cookie and Authorization-header sessions for Heartbeat schedule management
 - [x] Add tests for invalid paths, unsupported text extensions, upload size limits, and shared-server access
+- [x] Diagnose and fix production OAuth login button and callback flow on Render
+- [x] Add direct multipart upload endpoint for large archives with streaming limits
+- [x] Add email-based admin invitations with secure token lifecycle and acceptance flow
+- [x] Add durable audit log records and admin audit history UI
+- [x] Add schedule pause/resume/delete controls with task UID ownership
+- [x] Add Falix webhook event history UI with pagination and filters
+- [x] Add tests for production auth, multipart limits, invitations, audit, schedules, and webhook history
+- [x] Run full validation and publish the final feature checkpoint
+- [x] Replace multipart in-memory buffering with bounded streaming/temp-file provider bridge
+- [x] Add endpoint-level multipart tests for auth, content type, size limits, validation, and provider success
+- [x] Wire file manager large-archive uploads to /api/upload/multipart
+- [x] Add webhook event pagination with page metadata and UI controls
+- [x] Add webhook event type/search filters in API and Settings UI
+- [x] Add multipart endpoint oversized upload test asserting 413

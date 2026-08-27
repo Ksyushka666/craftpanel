@@ -135,6 +135,28 @@ export const serverSchedules = mysqlTable("server_schedules", {
   taskLookup: uniqueIndex("server_schedules_task_uid_unique").on(table.taskUid),
 }));
 
+export const serverInvitations = mysqlTable("server_invitations", {
+  id: int("id").autoincrement().primaryKey(),
+  serverId: int("serverId").notNull(),
+  inviterId: int("inviterId").notNull(),
+  email: varchar("email", { length: 320 }).notNull(),
+  role: mysqlEnum("role", ["admin", "operator", "viewer"]).default("viewer").notNull(),
+  tokenHash: varchar("tokenHash", { length: 128 }).notNull().unique(),
+  expiresAt: timestamp("expiresAt").notNull(),
+  acceptedAt: timestamp("acceptedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, table => ({ serverLookup: index("server_invitations_server_idx").on(table.serverId) }));
+
+export const auditLogs = mysqlTable("audit_logs", {
+  id: int("id").autoincrement().primaryKey(),
+  actorId: int("actorId").notNull(),
+  serverId: int("serverId"),
+  action: varchar("action", { length: 100 }).notNull(),
+  target: varchar("target", { length: 255 }),
+  metadata: text("metadata"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, table => ({ actorLookup: index("audit_logs_actor_idx").on(table.actorId), serverLookup: index("audit_logs_server_idx").on(table.serverId) }));
+
 export const serverFiles = mysqlTable("server_files", {
   id: int("id").autoincrement().primaryKey(),
   serverId: int("serverId").notNull(),
@@ -161,3 +183,5 @@ export type ServerMember = typeof serverMembers.$inferSelect;
 export type ServerWebhook = typeof serverWebhooks.$inferSelect;
 export type WebhookEvent = typeof webhookEvents.$inferSelect;
 export type ServerSchedule = typeof serverSchedules.$inferSelect;
+export type ServerInvitation = typeof serverInvitations.$inferSelect;
+export type AuditLog = typeof auditLogs.$inferSelect;

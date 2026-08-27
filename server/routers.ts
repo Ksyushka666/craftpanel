@@ -38,8 +38,14 @@ import {
   getOwnedSchedules,
   saveServerWebhook,
   getEnabledWebhookForServer,
+  getWebhookEventsForOwner,
+  deleteScheduleRecord,
+  createServerInvitation,
+  acceptServerInvitation,
+  getAuditLogsForOwner,
+  recordAuditLog,
 } from "./db";
-import { createHeartbeatJob, updateHeartbeatJob } from "./_core/heartbeat";
+import { createHeartbeatJob, updateHeartbeatJob, deleteHeartbeatJob } from "./_core/heartbeat";
 import {
   falixCreateDownload,
   falixCreateWebhook,
@@ -112,6 +118,7 @@ export const appRouter = router({
   system: systemRouter,
     auth: router({
     me: publicProcedure.query(opts => opts.ctx.user),
+    acceptInvitation: protectedProcedure.input(z.object({ token: z.string().regex(/^[a-f0-9]{64}$/), email: z.string().email() })).mutation(({ ctx, input }) => acceptServerInvitation(input.token, ctx.user.id, input.email)),
     logout: publicProcedure.mutation(({ ctx }) => {
       const cookieOptions = getSessionCookieOptions(ctx.req);
       ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });
@@ -378,9 +385,16 @@ export const appRouter = router({
           return { success: true };
         }),
     }),
+    audit: protectedProcedure.input(z.object({ serverId: z.number().int().positive().optional(), limit: z.number().int().min(1).max(100).default(50) })).query(async ({ ctx, input }) => { if (input.serverId) await requireServerAccess(ctx.user.id, input.serverId, "viewer"); return getAuditLogsForOwner(ctx.user.id, input.serverId, input.limit); }),
+    invite: protectedProcedure.input(z.object({ serverId: z.number().int().positive(), email: z.string().email(), role: z.enum(["admin", "operator", "viewer"]) })).mutation(async ({ ctx, input }) => {
+      const server = await requireServerAccess(ctx.user.id, input.serverId, "admin");
+      const result = await createServerInvitation(ctx.user.id, server.id, input.email, input.role);
+      await recordAuditLog(ctx.user.id, "member_invite_created", server.id, input.email, input.role);
+      return { ...result, inviteUrl: `/invite/${result.token}` };
+    }),
     members: router({
       list: protectedProcedure.input(serverIdInput).query(({ ctx, input }) => getServerMembers(ctx.user.id, input.id)),
-      upsert: protectedProcedure.input(z.object({ serverId: z.number().int().positive(), userId: z.number().int().positive(), role: z.enum(["admin", "operator", "viewer"]) })).mutation(({ ctx, input }) => upsertServerMember(ctx.user.id, input.serverId, input.userId, input.role)),
+      upsert: protectedProcedure.input(z.object({ serverId: z.number().int().positive(), userId: z.number().int().positive(), role: z.enum(["admin", "operator", "viewer"]) })).mutation(async ({ ctx, input }) => { const result = await upsertServerMember(ctx.user.id, input.serverId, input.userId, input.role); await recordAuditLog(ctx.user.id, "member_role_updated", input.serverId, String(input.userId), input.role); return result; }),
       remove: protectedProcedure.input(z.object({ serverId: z.number().int().positive(), userId: z.number().int().positive() })).mutation(({ ctx, input }) => deleteServerMember(ctx.user.id, input.serverId, input.userId)),
     }),
     webhooks: router({
@@ -389,6 +403,11 @@ export const appRouter = router({
         if (!server) throw new Error("Server not found");
         if (!falixIsConfigured()) return [];
         return falixListWebhooks(input.id);
+      }),
+      events: protectedProcedure.input(z.object({ serverId: z.number().int().positive(), limit: z.number().int().min(1).max(100).default(20), offset: z.number().int().min(0).default(0), eventType: z.string().trim().max(100).optional(), search: z.string().trim().max(80).optional() })).query(async ({ ctx, input }) => {
+        const server = await requireServerAccess(ctx.user.id, input.serverId, "viewer");
+        if (!server) throw new Error("Server not found");
+        return getWebhookEventsForOwner(ctx.user.id, input.serverId, input);
       }),
       register: protectedProcedure.input(z.object({ serverId: z.number().int().positive(), url: z.string().url().refine(value => value.startsWith("https://"), "Webhook URL must use HTTPS"), events: z.array(z.string().trim().min(1).max(100)).min(1).max(20) })).mutation(async ({ ctx, input }) => {
         const server = await getOwnedServer(ctx.user.id, input.serverId);
@@ -415,6 +434,13 @@ export const appRouter = router({
         const session = getSessionCredential(ctx.req);
         await updateHeartbeatJob(schedule.taskUid, { enable: input.enabled }, session);
         return updateScheduleRecord(ctx.user.id, input.id, { enabled: input.enabled ? 1 : 0 });
+      }),
+      remove: protectedProcedure.input(z.object({ id: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
+        const schedules = await listSchedulesForOwner(ctx.user.id);
+        const schedule = schedules.find(item => item.id === input.id);
+        if (!schedule?.taskUid) throw new Error("Schedule not found");
+        await deleteHeartbeatJob(schedule.taskUid, getSessionCredential(ctx.req));
+        return deleteScheduleRecord(ctx.user.id, input.id);
       }),
     }),
     createBackup: protectedProcedure

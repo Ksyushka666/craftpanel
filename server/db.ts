@@ -1,4 +1,5 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, like } from "drizzle-orm";
+import { createHash, randomBytes } from "node:crypto";
 import { storagePut } from "./storage";
 import { drizzle } from "drizzle-orm/mysql2";
 import {
@@ -14,6 +15,8 @@ import {
   serverWebhooks,
   webhookEvents,
   users,
+  auditLogs,
+  serverInvitations,
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 
@@ -211,6 +214,7 @@ export async function logServerAction(ownerId: number, serverId: number, action:
   const db = await getDb();
   if (!db) throw new Error("Database is not available");
   await db.insert(serverActions).values({ serverId, ownerId, action, payload, output });
+  await recordAuditLog(ownerId, action, serverId, payload, output);
   await db.insert(serverLogs).values({ ownerId, serverId, level: action === "command" ? "info" : "system", source: "panel", message: output || payload || action });
   return getRecentServerActions(ownerId, serverId);
 }
@@ -457,6 +461,65 @@ export async function listSchedulesForOwner(ownerId: number) {
   const db = await getDb();
   if (!db) return [];
   return db.select().from(serverSchedules).where(eq(serverSchedules.ownerId, ownerId)).orderBy(desc(serverSchedules.createdAt));
+}
+
+export async function deleteScheduleRecord(ownerId: number, scheduleId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database is not available");
+  await db.delete(serverSchedules).where(and(eq(serverSchedules.id, scheduleId), eq(serverSchedules.ownerId, ownerId)));
+  return { success: true };
+}
+
+export async function getWebhookEventsForOwner(ownerId: number, serverId: number, options: { limit?: number; offset?: number; eventType?: string; search?: string } = {}) {
+  const db = await getDb();
+  if (!db) return { items: [], nextOffset: null };
+  const limit = Math.min(Math.max(options.limit ?? 20, 1), 100);
+  const offset = Math.max(options.offset ?? 0, 0);
+  const filters = [eq(serverWebhooks.ownerId, ownerId), eq(serverWebhooks.serverId, serverId)];
+  if (options.eventType) filters.push(eq(webhookEvents.eventType, options.eventType));
+  if (options.search) filters.push(like(webhookEvents.eventKey, `%${options.search.slice(0, 80)}%`));
+  const rows = await db.select({ event: webhookEvents, webhook: serverWebhooks })
+    .from(webhookEvents)
+    .innerJoin(serverWebhooks, eq(webhookEvents.webhookId, serverWebhooks.id))
+    .where(and(...filters))
+    .orderBy(desc(webhookEvents.createdAt))
+    .limit(limit + 1)
+    .offset(offset);
+  return { items: rows.slice(0, limit), nextOffset: rows.length > limit ? offset + limit : null };
+}
+
+export async function createServerInvitation(inviterId: number, serverId: number, email: string, role: "admin" | "operator" | "viewer") {
+  const db = await getDb();
+  if (!db) throw new Error("Database is not available");
+  const token = randomBytes(32).toString("hex");
+  const tokenHash = createHash("sha256").update(token).digest("hex");
+  await db.insert(serverInvitations).values({ inviterId, serverId, email: email.toLowerCase(), role, tokenHash, expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) });
+  return { token, expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) };
+}
+
+export async function acceptServerInvitation(token: string, userId: number, email: string) {
+  const db = await getDb();
+  if (!db) throw new Error("Database is not available");
+  const tokenHash = createHash("sha256").update(token).digest("hex");
+  const rows = await db.select().from(serverInvitations).where(eq(serverInvitations.tokenHash, tokenHash)).limit(1);
+  const invitation = rows[0];
+  if (!invitation || invitation.acceptedAt || invitation.expiresAt.getTime() < Date.now() || invitation.email !== email.toLowerCase()) throw new Error("Invitation is invalid or expired");
+  await db.insert(serverMembers).values({ serverId: invitation.serverId, userId, role: invitation.role }).onDuplicateKeyUpdate({ set: { role: invitation.role } });
+  await db.update(serverInvitations).set({ acceptedAt: new Date() }).where(eq(serverInvitations.id, invitation.id));
+  return { success: true, serverId: invitation.serverId, role: invitation.role };
+}
+
+export async function getAuditLogsForOwner(ownerId: number, serverId?: number, limit = 50) {
+  const db = await getDb();
+  if (!db) return [];
+  const conditions = serverId ? eq(auditLogs.serverId, serverId) : eq(auditLogs.actorId, ownerId);
+  return db.select().from(auditLogs).where(conditions).orderBy(desc(auditLogs.createdAt)).limit(Math.min(Math.max(limit, 1), 100));
+}
+
+export async function recordAuditLog(actorId: number, action: string, serverId?: number, target?: string, metadata?: string) {
+  const db = await getDb();
+  if (!db) throw new Error("Database is not available");
+  await db.insert(auditLogs).values({ actorId, action, serverId, target, metadata });
 }
 
 export async function getEnabledWebhookForServer(serverId: number) {
