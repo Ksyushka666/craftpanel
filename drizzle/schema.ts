@@ -112,6 +112,7 @@ export const webhookEvents = mysqlTable("webhook_events", {
   webhookId: int("webhookId").notNull(),
   eventKey: varchar("eventKey", { length: 190 }).notNull(),
   eventType: varchar("eventType", { length: 100 }).notNull(),
+  status: mysqlEnum("status", ["received", "duplicate", "failed"]).default("received").notNull(),
   payload: text("payload").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 }, table => ({

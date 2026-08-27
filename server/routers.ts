@@ -404,10 +404,13 @@ export const appRouter = router({
         if (!falixIsConfigured()) return [];
         return falixListWebhooks(input.id);
       }),
-      events: protectedProcedure.input(z.object({ serverId: z.number().int().positive(), limit: z.number().int().min(1).max(100).default(20), offset: z.number().int().min(0).default(0), eventType: z.string().trim().max(100).optional(), search: z.string().trim().max(80).optional() })).query(async ({ ctx, input }) => {
+      events: protectedProcedure.input(z.object({ serverId: z.number().int().positive(), limit: z.number().int().min(1).max(100).default(20), offset: z.number().int().min(0).default(0), eventType: z.string().trim().max(100).optional(), status: z.enum(["received", "duplicate", "failed"]).optional(), search: z.string().trim().max(80).optional(), fromDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(), toDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional() })).query(async ({ ctx, input }) => {
         const server = await requireServerAccess(ctx.user.id, input.serverId, "viewer");
         if (!server) throw new Error("Server not found");
-        return getWebhookEventsForOwner(ctx.user.id, input.serverId, input);
+        const fromDate = input.fromDate ? new Date(`${input.fromDate}T00:00:00.000Z`) : undefined;
+        const toDate = input.toDate ? new Date(`${input.toDate}T23:59:59.999Z`) : undefined;
+        if (fromDate?.toString() === "Invalid Date" || toDate?.toString() === "Invalid Date") throw new Error("Invalid webhook date filter");
+        return getWebhookEventsForOwner(ctx.user.id, input.serverId, { ...input, fromDate, toDate });
       }),
       register: protectedProcedure.input(z.object({ serverId: z.number().int().positive(), url: z.string().url().refine(value => value.startsWith("https://"), "Webhook URL must use HTTPS"), events: z.array(z.string().trim().min(1).max(100)).min(1).max(20) })).mutation(async ({ ctx, input }) => {
         const server = await getOwnedServer(ctx.user.id, input.serverId);

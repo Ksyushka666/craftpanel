@@ -1,0 +1,1 @@
+ALTER TABLE `webhook_events` ADD `status` enum('received','duplicate','failed') DEFAULT 'received' NOT NULL;

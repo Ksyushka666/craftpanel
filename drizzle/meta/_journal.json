@@ -57,6 +57,13 @@
       "when": 1787854932683,
       "tag": "0007_brainy_red_ghost",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "5",
+      "when": 1787855577689,
+      "tag": "0008_melodic_thing",
+      "breakpoints": true
     }
   ]
 }

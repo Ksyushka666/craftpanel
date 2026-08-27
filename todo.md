@@ -102,3 +102,11 @@
 - [x] Add webhook event pagination with page metadata and UI controls
 - [x] Add webhook event type/search filters in API and Settings UI
 - [x] Add multipart endpoint oversized upload test asserting 413
+- [x] Add drag-and-drop upload progress indicator and successful-upload animation
+- [x] Add CSV export for audit log and webhook history
+- [x] Add webhook history search, status filter, and date-range filters with persisted received/duplicate/failed statuses
+- [x] Add tests for CSV escaping and CSV formatting; typecheck/build cover integrated export and filter contracts
+- [ ] Run validation, visual verification, and save a new checkpoint
+- [x] Diagnose production Manus OAuth account-selection hang after callback launch
+- [x] Fix OAuth redirect/callback/session cookie flow for Render production
+- [x] Add OAuth regression checks and verify successful production login

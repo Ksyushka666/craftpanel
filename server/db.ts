@@ -1,4 +1,4 @@
-import { and, desc, eq, like } from "drizzle-orm";
+import { and, desc, eq, gte, like, lte } from "drizzle-orm";
 import { createHash, randomBytes } from "node:crypto";
 import { storagePut } from "./storage";
 import { drizzle } from "drizzle-orm/mysql2";
@@ -429,14 +429,18 @@ export async function saveServerWebhook(ownerId: number, data: { serverId: numbe
   return getWebhookByExternalId(data.serverId, data.externalHookId);
 }
 
-export async function recordWebhookEvent(webhookId: number, eventKey: string, eventType: string, payload: string) {
+export async function recordWebhookEvent(webhookId: number, eventKey: string, eventType: string, payload: string, status: "received" | "duplicate" | "failed" = "received") {
   const db = await getDb();
   if (!db) return false;
   try {
-    await db.insert(webhookEvents).values({ webhookId, eventKey, eventType, payload });
+    await db.insert(webhookEvents).values({ webhookId, eventKey, eventType, status, payload });
     return true;
   } catch (error) {
-    if (/duplicate|unique/i.test(String(error))) return false;
+    if (/duplicate|unique/i.test(String(error))) {
+      const duplicateKey = `${eventKey}:duplicate:${Date.now()}`;
+      await db.insert(webhookEvents).values({ webhookId, eventKey: duplicateKey.slice(0, 190), eventType, status: "duplicate", payload });
+      return false;
+    }
     throw error;
   }
 }
@@ -470,14 +474,17 @@ export async function deleteScheduleRecord(ownerId: number, scheduleId: number) 
   return { success: true };
 }
 
-export async function getWebhookEventsForOwner(ownerId: number, serverId: number, options: { limit?: number; offset?: number; eventType?: string; search?: string } = {}) {
+export async function getWebhookEventsForOwner(ownerId: number, serverId: number, options: { limit?: number; offset?: number; eventType?: string; status?: "received" | "duplicate" | "failed"; search?: string; fromDate?: Date; toDate?: Date } = {}) {
   const db = await getDb();
   if (!db) return { items: [], nextOffset: null };
-  const limit = Math.min(Math.max(options.limit ?? 20, 1), 100);
+  const limit = Math.min(Math.max(options.limit ?? 20, 1), 5000);
   const offset = Math.max(options.offset ?? 0, 0);
   const filters = [eq(serverWebhooks.ownerId, ownerId), eq(serverWebhooks.serverId, serverId)];
   if (options.eventType) filters.push(eq(webhookEvents.eventType, options.eventType));
+  if (options.status) filters.push(eq(webhookEvents.status, options.status));
   if (options.search) filters.push(like(webhookEvents.eventKey, `%${options.search.slice(0, 80)}%`));
+  if (options.fromDate) filters.push(gte(webhookEvents.createdAt, options.fromDate));
+  if (options.toDate) filters.push(lte(webhookEvents.createdAt, options.toDate));
   const rows = await db.select({ event: webhookEvents, webhook: serverWebhooks })
     .from(webhookEvents)
     .innerJoin(serverWebhooks, eq(webhookEvents.webhookId, serverWebhooks.id))

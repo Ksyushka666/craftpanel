@@ -10,6 +10,10 @@ function getQueryParam(req: Request, key: string): string | undefined {
   return typeof value === "string" ? value : undefined;
 }
 
+export function resolveSessionName(userInfo: { openId: string; name?: string | null; email?: string | null }) {
+  return userInfo.name?.trim() || userInfo.email?.trim() || userInfo.openId;
+}
+
 export function registerOAuthRoutes(app: Express) {
   app.get("/api/oauth/callback", async (req: Request, res: Response) => {
     const code = getQueryParam(req, "code");
@@ -40,16 +44,17 @@ export function registerOAuthRoutes(app: Express) {
         return;
       }
 
+      const sessionName = resolveSessionName(userInfo);
       await db.upsertUser({
         openId: userInfo.openId,
-        name: userInfo.name || null,
+        name: sessionName,
         email: userInfo.email ?? null,
         loginMethod: userInfo.loginMethod ?? userInfo.platform ?? null,
         lastSignedIn: new Date(),
       });
 
       const sessionToken = await sdk.createSessionToken(userInfo.openId, {
-        name: userInfo.name || "",
+        name: sessionName,
         expiresInMs: ONE_YEAR_MS,
       });
 

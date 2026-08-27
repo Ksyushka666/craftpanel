@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import type { Express, Request, Response } from "express";
-import { createServerLog, getWebhookByExternalId, markWebhookDelivery } from "./db";
+import { createServerLog, getWebhookByExternalId, markWebhookDelivery, recordWebhookEvent } from "./db";
 
 type WebhookEvent = { event?: string; server?: { id?: number }; occurred_at?: number; data?: unknown };
 
@@ -13,12 +13,16 @@ export function validFalixSignature(secret: string, body: Buffer, header: string
 
 export function registerFalixWebhookRoute(app: Express) {
   app.post("/api/falix/webhooks/:serverId/:hookId", async (req: Request, res: Response) => {
+    let webhookId: number | undefined;
+    let rawBody = "";
     try {
       const body = Buffer.isBuffer(req.body) ? req.body : Buffer.from(JSON.stringify(req.body ?? {}));
+      rawBody = body.toString("utf8");
       const serverId = Number(req.params.serverId);
       const hookId = req.params.hookId;
       const webhook = await getWebhookByExternalId(serverId, hookId);
       if (!webhook || !webhook.enabled) return res.status(404).json({ error: "unknown webhook" });
+      webhookId = webhook.id;
       if (!validFalixSignature(webhook.secret, body, req.header("X-Falix-Signature"))) return res.status(401).json({ error: "invalid signature" });
       const payload = JSON.parse(body.toString("utf8")) as WebhookEvent;
       const eventType = payload.event ?? req.header("X-Falix-Event") ?? "unknown";
@@ -30,6 +34,7 @@ export function registerFalixWebhookRoute(app: Express) {
       return res.status(202).json({ ok: true, duplicate: !accepted });
     } catch (error) {
       console.error("[Falix webhook] delivery failed", error);
+      if (webhookId) { try { await recordWebhookEvent(webhookId, `failed:${Date.now()}`, "unknown", rawBody, "failed"); } catch (recordError) { console.error("[Falix webhook] failed status persistence failed", recordError); } }
       return res.status(500).json({ error: "webhook processing failed" });
     }
   });

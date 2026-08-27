@@ -1813,6 +1813,7 @@ function FileManagerView({ server }: { server: Server }) {
   const [selectedPath, setSelectedPath] = useState("");
   const [editorContent, setEditorContent] = useState("");
   const [dragActive, setDragActive] = useState(false);
+  const [uploadState, setUploadState] = useState<{ status: "idle" | "uploading" | "success" | "error"; progress: number; name?: string }>({ status: "idle", progress: 0 });
   const utils = trpc.useUtils();
   const filesQuery = trpc.servers.files.list.useQuery({
     serverId: server.id,
@@ -1868,6 +1869,24 @@ function FileManagerView({ server }: { server: Server }) {
     reader.onerror = () => reject(new Error("Не удалось прочитать файл"));
     reader.readAsDataURL(file);
   });
+  const uploadMultipartWithProgress = (file: File, onProgress: (value: number) => void) => new Promise<void>((resolve, reject) => {
+    const form = new FormData();
+    form.append("serverId", String(server.id));
+    form.append("parentPath", parentPath);
+    form.append("name", file.name);
+    form.append("mimeType", file.type || "application/octet-stream");
+    form.append("file", file, file.name);
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", "/api/upload/multipart");
+    xhr.upload.onprogress = progress => { if (progress.lengthComputable) onProgress(Math.round((progress.loaded / progress.total) * 100)); };
+    xhr.onload = () => { if (xhr.status >= 200 && xhr.status < 300) resolve(); else { try { reject(new Error(JSON.parse(xhr.responseText).error || "Не удалось загрузить файл")); } catch { reject(new Error("Не удалось загрузить файл")); } } };
+    xhr.onerror = () => reject(new Error("Сетевая ошибка при загрузке"));
+    xhr.send(form);
+  });
+  const completeUpload = () => {
+    setUploadState(current => ({ ...current, status: "success", progress: 100 }));
+    window.setTimeout(() => setUploadState({ status: "idle", progress: 0 }), 2600);
+  };
   const handleDrop = async (event: React.DragEvent<HTMLDivElement>) => {
     event.preventDefault();
     setDragActive(false);
@@ -1877,24 +1896,23 @@ function FileManagerView({ server }: { server: Server }) {
       toast.error("Максимальный размер загрузки — 512 MiB");
       return;
     }
+    setUploadState({ status: "uploading", progress: 0, name: file.name });
     try {
       if (file.size > 10 * 1024 * 1024) {
-        const form = new FormData();
-        form.append("serverId", String(server.id));
-        form.append("parentPath", parentPath);
-        form.append("name", file.name);
-        form.append("mimeType", file.type || "application/octet-stream");
-        form.append("file", file, file.name);
-        const response = await fetch("/api/upload/multipart", { method: "POST", body: form });
-        const result = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error(result.error || "Не удалось загрузить большой файл");
+        await uploadMultipartWithProgress(file, progress => setUploadState(current => ({ ...current, progress })));
         await utils.servers.files.list.invalidate({ serverId: server.id, parentPath });
         toast.success("Большой файл загружен на сервер");
       } else {
-        uploadMutation.mutate({ serverId: server.id, parentPath, name: file.name, mimeType: file.type || "application/octet-stream", contentBase64: await readAsBase64(file) });
+        setUploadState(current => ({ ...current, progress: 15 }));
+        const contentBase64 = await readAsBase64(file);
+        setUploadState(current => ({ ...current, progress: 70 }));
+        await uploadMutation.mutateAsync({ serverId: server.id, parentPath, name: file.name, mimeType: file.type || "application/octet-stream", contentBase64 });
       }
+      completeUpload();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Не удалось прочитать файл");
+      setUploadState(current => ({ ...current, status: "error" }));
+      window.setTimeout(() => setUploadState({ status: "idle", progress: 0 }), 3200);
+      toast.error(error instanceof Error ? error.message : "Не удалось загрузить файл");
     }
   };
   const segments =
@@ -2061,7 +2079,9 @@ function FileManagerView({ server }: { server: Server }) {
         <Upload className="mx-auto h-5 w-5 text-[#89ad36]" />
         <p className="mt-2 text-sm font-medium">Перетащи файл сюда</p>
         <p className="mt-1 text-xs text-[#899386]">До 512 MiB. Большие архивы отправляются напрямую через потоковый multipart-маршрут Falix.</p>
-        {uploadMutation.isPending && <p className="mt-2 text-xs text-[#779d31]">Загрузка…</p>}
+        {uploadState.status === "uploading" && <div className="mx-auto mt-4 max-w-md text-left"><div className="mb-1 flex items-center justify-between text-[11px] text-[#779d31]"><span className="truncate pr-3">Загрузка {uploadState.name}</span><span>{uploadState.progress}%</span></div><div className="h-2 overflow-hidden rounded-full bg-[#e6eadc] dark:bg-[#2a3529]"><div className="h-full rounded-full bg-[#a8df2e] transition-[width] duration-200" style={{ width: `${uploadState.progress}%` }} /></div></div>}
+        {uploadState.status === "success" && <div className="upload-success mx-auto mt-4 flex max-w-md items-center justify-center gap-2 rounded-xl bg-[#effbd6] px-3 py-2 text-xs font-medium text-[#5f8420] dark:bg-[#263a1f] dark:text-[#c5ff3f]"><Check className="h-4 w-4" /> Файл успешно загружен</div>}
+        {uploadState.status === "error" && <p className="mt-3 text-xs text-[#c45f73]">Загрузка не удалась. Попробуйте ещё раз.</p>}
       </div>
       {selectedPath && (
         <Card className="rounded-[24px] border-[#dfe2d6] bg-[#fffdf7] panel-shadow dark:border-white/10 dark:bg-[#171f19]">
@@ -2453,8 +2473,11 @@ function SettingsView({ userName, server }: { userName: string; server?: Server 
   const schedulesQuery = trpc.servers.schedules.list.useQuery(undefined, { enabled: Boolean(server) });
   const [webhookEventType, setWebhookEventType] = useState("");
   const [webhookSearch, setWebhookSearch] = useState("");
+  const [webhookStatus, setWebhookStatus] = useState<"" | "received" | "duplicate" | "failed">("");
+  const [webhookFromDate, setWebhookFromDate] = useState("");
+  const [webhookToDate, setWebhookToDate] = useState("");
   const [webhookOffset, setWebhookOffset] = useState(0);
-  const webhookEventsQuery = trpc.servers.webhooks.events.useQuery({ serverId: server?.id ?? 0, limit: 10, offset: webhookOffset, eventType: webhookEventType || undefined, search: webhookSearch || undefined }, { enabled: Boolean(server) });
+  const webhookEventsQuery = trpc.servers.webhooks.events.useQuery({ serverId: server?.id ?? 0, limit: 10, offset: webhookOffset, eventType: webhookEventType || undefined, status: webhookStatus || undefined, search: webhookSearch || undefined, fromDate: webhookFromDate || undefined, toDate: webhookToDate || undefined }, { enabled: Boolean(server) });
   const auditQuery = trpc.servers.audit.useQuery({ serverId: server?.id, limit: 20 }, { enabled: Boolean(server) });
   const [memberUserId, setMemberUserId] = useState("");
   const [inviteEmail, setInviteEmail] = useState("");
@@ -2527,14 +2550,14 @@ function SettingsView({ userName, server }: { userName: string; server?: Server 
             <CardHeader><CardTitle className="text-base">Пригласить администратора</CardTitle><p className="text-xs text-[#899386]">Создаётся одноразовая ссылка на 7 дней; отправьте её приглашённому по email.</p></CardHeader><CardContent className="flex flex-col gap-2 sm:flex-row"><Input value={inviteEmail} onChange={event => setInviteEmail(event.target.value)} placeholder="admin@example.com" type="email" className="h-10 rounded-lg bg-[#f7f6ef] text-xs dark:bg-[#202a21]" /><Button disabled={!inviteEmail || inviteMutation.isPending} onClick={() => inviteMutation.mutate({ serverId: server.id, email: inviteEmail, role: "admin" })} className="h-10 rounded-lg bg-[#151a16] text-xs text-white dark:bg-[#c5ff3f] dark:text-[#151a16]">{inviteMutation.isPending ? "Создание…" : "Создать invite"}</Button></CardContent>
           </Card>
           <Card className="rounded-[24px] border-[#dfe2d6] bg-[#fffdf7] panel-shadow dark:border-white/10 dark:bg-[#171f19]">
-            <CardHeader><CardTitle className="text-base">Falix webhooks</CardTitle><p className="text-xs text-[#899386]">События Falix сохраняются только после проверки HMAC-подписи.</p></CardHeader>
-            <CardContent className="space-y-3"><Input readOnly value={`${window.location.origin}/api/falix/webhooks/${server.id}/main`} className="h-10 rounded-lg bg-[#f7f6ef] text-xs dark:bg-[#202a21]" /><Button disabled={webhookMutation.isPending} onClick={() => webhookMutation.mutate({ serverId: server.id, url: `${window.location.origin}/api/falix/webhooks/${server.id}/main`, events: ["server.started", "server.stopped", "server.crashed", "player.joined", "player.left"] })} className="h-10 rounded-lg bg-[#151a16] text-xs text-white dark:bg-[#c5ff3f] dark:text-[#151a16]">{webhookMutation.isPending ? "Подключение…" : "Подключить события"}</Button><div className="flex flex-col gap-2 sm:flex-row"><Input value={webhookEventType} onChange={event => { setWebhookEventType(event.target.value); setWebhookOffset(0); }} placeholder="Тип события" className="h-9 rounded-lg bg-[#f7f6ef] text-xs dark:bg-[#202a21]" /><Input value={webhookSearch} onChange={event => { setWebhookSearch(event.target.value); setWebhookOffset(0); }} placeholder="Поиск event key" className="h-9 rounded-lg bg-[#f7f6ef] text-xs dark:bg-[#202a21]" /></div><div className="space-y-2 border-t border-[#e7e9df] pt-3 dark:border-white/10"><p className="text-[11px] font-medium text-[#899386]">История событий</p>{(webhookEventsQuery.data?.items ?? []).length ? webhookEventsQuery.data!.items.map(({ event }) => <div key={event.id} className="rounded-lg bg-[#eff2e7] px-3 py-2 text-xs dark:bg-[#202a21]"><div className="flex items-center justify-between gap-3"><span className="font-medium">{event.eventType}</span><span className="text-[10px] text-[#899386]">{new Date(event.createdAt).toLocaleString("ru-RU")}</span></div><p className="mt-1 truncate text-[#899386]">{event.eventKey}</p></div>) : <p className="text-xs text-[#899386]">Подтверждённых событий пока нет.</p>}<div className="flex items-center justify-between pt-2"><Button variant="outline" className="h-7 rounded-md px-2 text-[10px]" disabled={webhookOffset === 0 || webhookEventsQuery.isFetching} onClick={() => setWebhookOffset(Math.max(0, webhookOffset - 10))}>Назад</Button><span className="text-[10px] text-[#899386]">Страница {Math.floor(webhookOffset / 10) + 1}</span><Button variant="outline" className="h-7 rounded-md px-2 text-[10px]" disabled={!webhookEventsQuery.data?.nextOffset || webhookEventsQuery.isFetching} onClick={() => setWebhookOffset(webhookEventsQuery.data?.nextOffset ?? webhookOffset)}>Далее</Button></div></div></CardContent>
+            <CardHeader><div className="flex items-start justify-between gap-3"><div><CardTitle className="text-base">Falix webhooks</CardTitle><p className="text-xs text-[#899386]">События Falix сохраняются только после проверки HMAC-подписи.</p></div><a href={`/api/export/webhooks.csv?serverId=${server.id}&eventType=${encodeURIComponent(webhookEventType)}&status=${encodeURIComponent(webhookStatus)}&search=${encodeURIComponent(webhookSearch)}&fromDate=${encodeURIComponent(webhookFromDate)}&toDate=${encodeURIComponent(webhookToDate)}`} download className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[#dfe2d6] px-2.5 text-[10px] font-medium text-[#657060] hover:bg-[#eff2e7] dark:border-white/10 dark:text-[#c5ff3f] dark:hover:bg-[#202a21]"><Download className="h-3.5 w-3.5" /> CSV</a></div></CardHeader>
+            <CardContent className="space-y-3"><Input readOnly value={`${window.location.origin}/api/falix/webhooks/${server.id}/main`} className="h-10 rounded-lg bg-[#f7f6ef] text-xs dark:bg-[#202a21]" /><Button disabled={webhookMutation.isPending} onClick={() => webhookMutation.mutate({ serverId: server.id, url: `${window.location.origin}/api/falix/webhooks/${server.id}/main`, events: ["server.started", "server.stopped", "server.crashed", "player.joined", "player.left"] })} className="h-10 rounded-lg bg-[#151a16] text-xs text-white dark:bg-[#c5ff3f] dark:text-[#151a16]">{webhookMutation.isPending ? "Подключение…" : "Подключить события"}</Button><div className="flex flex-col gap-2 sm:flex-row"><Input value={webhookEventType} onChange={event => { setWebhookEventType(event.target.value); setWebhookOffset(0); }} placeholder="Тип события" className="h-9 rounded-lg bg-[#f7f6ef] text-xs dark:bg-[#202a21]" /><Input value={webhookSearch} onChange={event => { setWebhookSearch(event.target.value); setWebhookOffset(0); }} placeholder="Поиск event key" className="h-9 rounded-lg bg-[#f7f6ef] text-xs dark:bg-[#202a21]" /><select value={webhookStatus} onChange={event => { setWebhookStatus(event.target.value as typeof webhookStatus); setWebhookOffset(0); }} className="h-9 rounded-lg border border-[#dfe2d6] bg-[#f7f6ef] px-2 text-xs dark:border-white/10 dark:bg-[#202a21]"><option value="">Все статусы</option><option value="received">Принято</option><option value="duplicate">Дубликаты</option><option value="failed">Ошибки</option></select><Input type="date" value={webhookFromDate} onChange={event => { setWebhookFromDate(event.target.value); setWebhookOffset(0); }} aria-label="Дата от" className="h-9 rounded-lg bg-[#f7f6ef] text-xs dark:bg-[#202a21]" /><Input type="date" value={webhookToDate} onChange={event => { setWebhookToDate(event.target.value); setWebhookOffset(0); }} aria-label="Дата до" className="h-9 rounded-lg bg-[#f7f6ef] text-xs dark:bg-[#202a21]" /></div><div className="space-y-2 border-t border-[#e7e9df] pt-3 dark:border-white/10"><p className="text-[11px] font-medium text-[#899386]">История событий</p>{(webhookEventsQuery.data?.items ?? []).length ? webhookEventsQuery.data!.items.map(({ event }) => <div key={event.id} className="rounded-lg bg-[#eff2e7] px-3 py-2 text-xs dark:bg-[#202a21]"><div className="flex items-center justify-between gap-3"><span className="font-medium">{event.eventType}</span><span className="text-[10px] text-[#899386]">{new Date(event.createdAt).toLocaleString("ru-RU")}</span></div><p className="mt-1 truncate text-[#899386]">{event.eventKey}</p></div>) : <p className="text-xs text-[#899386]">Подтверждённых событий пока нет.</p>}<div className="flex items-center justify-between pt-2"><Button variant="outline" className="h-7 rounded-md px-2 text-[10px]" disabled={webhookOffset === 0 || webhookEventsQuery.isFetching} onClick={() => setWebhookOffset(Math.max(0, webhookOffset - 10))}>Назад</Button><span className="text-[10px] text-[#899386]">Страница {Math.floor(webhookOffset / 10) + 1}</span><Button variant="outline" className="h-7 rounded-md px-2 text-[10px]" disabled={!webhookEventsQuery.data?.nextOffset || webhookEventsQuery.isFetching} onClick={() => setWebhookOffset(webhookEventsQuery.data?.nextOffset ?? webhookOffset)}>Далее</Button></div></div></CardContent>
           </Card>
           <Card className="rounded-[24px] border-[#dfe2d6] bg-[#fffdf7] panel-shadow dark:border-white/10 dark:bg-[#171f19]">
             <CardHeader><CardTitle className="text-base">Автоматический перезапуск</CardTitle><p className="text-xs text-[#899386]">Cron выражение задаётся в UTC; restart выполняется через Heartbeat callback и Falix API.</p></CardHeader>
             <CardContent className="space-y-3"><div className="flex flex-col gap-2 sm:flex-row"><Input value={scheduleName} onChange={event => setScheduleName(event.target.value)} className="h-10 rounded-lg bg-[#f7f6ef] text-xs dark:bg-[#202a21]" /><Input value={cronExpression} onChange={event => setCronExpression(event.target.value)} placeholder="0 4 * * *" className="h-10 rounded-lg bg-[#f7f6ef] font-mono text-xs dark:bg-[#202a21]" /><Button disabled={scheduleMutation.isPending} onClick={() => scheduleMutation.mutate({ serverId: server.id, name: scheduleName, cronExpression })} className="h-10 rounded-lg bg-[#151a16] text-xs text-white dark:bg-[#c5ff3f] dark:text-[#151a16]">Создать</Button></div><div className="space-y-2">{(schedulesQuery.data ?? []).filter(item => item.serverId === server.id).map(item => <div key={item.id} className="flex flex-col gap-2 rounded-lg bg-[#eff2e7] px-3 py-2 text-xs dark:bg-[#202a21]"><div className="flex items-center justify-between gap-3"><span>{item.name} · {item.cronExpression}</span><Badge variant="outline">{item.enabled ? "активно" : "пауза"}</Badge></div><div className="flex gap-2"><Button variant="outline" className="h-7 rounded-md px-2 text-[10px]" disabled={scheduleEnabledMutation.isPending} onClick={() => scheduleEnabledMutation.mutate({ id: item.id, enabled: !Boolean(item.enabled) })}>{item.enabled ? "Пауза" : "Возобновить"}</Button><Button variant="outline" className="h-7 rounded-md px-2 text-[10px] text-red-600" disabled={scheduleRemoveMutation.isPending} onClick={() => scheduleRemoveMutation.mutate({ id: item.id })}>Удалить</Button></div></div>)}</div></CardContent>
           </Card>
-          <Card className="rounded-[24px] border-[#dfe2d6] bg-[#fffdf7] panel-shadow dark:border-white/10 dark:bg-[#171f19]"><CardHeader><CardTitle className="text-base">Журнал действий</CardTitle><p className="text-xs text-[#899386]">Последние операции владельца и приглашения по выбранному серверу.</p></CardHeader><CardContent className="space-y-2">{(auditQuery.data ?? []).map(item => <div key={item.id} className="flex items-center justify-between gap-3 rounded-lg bg-[#eff2e7] px-3 py-2 text-xs dark:bg-[#202a21]"><span>{item.action}{item.target ? ` · ${item.target}` : ""}</span><span className="text-[10px] text-[#899386]">{new Date(item.createdAt).toLocaleString("ru-RU")}</span></div>)}</CardContent></Card>
+          <Card className="rounded-[24px] border-[#dfe2d6] bg-[#fffdf7] panel-shadow dark:border-white/10 dark:bg-[#171f19]"><CardHeader><div className="flex items-start justify-between gap-3"><div><CardTitle className="text-base">Журнал действий</CardTitle><p className="text-xs text-[#899386]">Последние операции владельца и приглашения по выбранному серверу.</p></div><a href={`/api/export/audit.csv?serverId=${server.id}`} download className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[#dfe2d6] px-2.5 text-[10px] font-medium text-[#657060] hover:bg-[#eff2e7] dark:border-white/10 dark:text-[#c5ff3f] dark:hover:bg-[#202a21]"><Download className="h-3.5 w-3.5" /> CSV</a></div></CardHeader><CardContent className="space-y-2">{(auditQuery.data ?? []).map(item => <div key={item.id} className="flex items-center justify-between gap-3 rounded-lg bg-[#eff2e7] px-3 py-2 text-xs dark:bg-[#202a21]"><span>{item.action}{item.target ? ` · ${item.target}` : ""}</span><span className="text-[10px] text-[#899386]">{new Date(item.createdAt).toLocaleString("ru-RU")}</span></div>)}</CardContent></Card>
         </>
       ) : null}
     </div>
