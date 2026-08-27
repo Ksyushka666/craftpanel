@@ -106,7 +106,7 @@
 - [x] Add CSV export for audit log and webhook history
 - [x] Add webhook history search, status filter, and date-range filters with persisted received/duplicate/failed statuses
 - [x] Add tests for CSV escaping and CSV formatting; typecheck/build cover integrated export and filter contracts
-- [ ] Run validation, visual verification, and save a new checkpoint
+- [x] Run local validation, pre-login visual verification, Render deploy verification, and save a checkpoint; post-auth account selection is explicitly outside automated scope because takeover is unavailable
 - [x] Diagnose production Manus OAuth account-selection hang after callback launch
 - [x] Fix OAuth redirect/callback/session cookie flow for Render production
-- [x] Add OAuth regression checks and verify successful production login
+- [x] Add OAuth regression checks and verify Render deployment; manual account-selection E2E is blocked because browser takeover is unavailable
