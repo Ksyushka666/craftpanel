@@ -42,3 +42,12 @@
 - [x] Capture light and dark screenshots with a selected active server so the live console and filters are visible
 - [x] Capture a narrow mobile screenshot that includes both the theme toggle and live console
 - [x] Record the active-server visual verification evidence
+- [x] Add realtime CPU, RAM, and player-count chart widget
+- [x] Define metric polling/history behavior and empty/loading states
+- [ ] Prepare Render Service deployment setup and RENDER_DEPLOY_HOOK_URL secret contract
+- [ ] Define external MySQL, OAuth, storage, and production environment configuration
+- [x] Verify charts, deployment workflow, documentation, and tests
+- [x] Add pure metric-history helper with unit tests for rolling points and RAM percentage
+- [x] Document realtime chart polling and retention behavior in README
+- [x] Confirm metrics.test.ts discovery and passing execution in Vitest output
+- [x] Record Render workflow as YAML/build validated but E2E pending authenticated Render access

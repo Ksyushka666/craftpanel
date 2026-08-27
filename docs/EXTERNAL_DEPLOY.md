@@ -26,3 +26,7 @@ Railway project token должен быть ограничен конкретн�
 ## Sources
 
 Инструкции основаны на официальной документации [Render Deploy Hooks](https://render.com/docs/deploy-hooks), [Render Deploys](https://render.com/docs/deploys), [Railway CLI `up`](https://docs.railway.com/cli/up), [Railway CLI deployment](https://docs.railway.com/cli/deploying) и [Railway pricing](https://railway.com/pricing).
+
+## Текущий статус проверки
+
+Workflow-файлы, YAML, build, typecheck и тесты проверены локально. Фактический Render Web Service и первый E2E вызов Deploy Hook требуют авторизованной Render-сессии и значения `RENDER_DEPLOY_HOOK_URL`; без них репозиторий не делает неподтверждённых внешних запросов. После создания сервиса достаточно добавить secret и выполнить push в `main` или запустить workflow вручную.

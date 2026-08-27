@@ -75,3 +75,7 @@ docs/LOCAL_DEPLOYMENT.md              # Local deployment and runtime adapter not
 В верхней панели доступен переключатель светлой и тёмной темы. Выбор сохраняется в `localStorage`, а кнопка имеет доступные `aria-label` и `title` для клавиатурной и скринридер-навигации.
 
 Раздел консоли запрашивает owner-scoped записи `servers.logs` с интервалом 1.2 секунды, показывает статус `LIVE`, поддерживает фильтры `Все`, `Система`, `Info`, `Warn`, `Error` и `Debug`, а также подсвечивает уровни разными цветами. Действия из панели пишутся в этот поток через `source: panel`. Для реальных игровых процессов runtime adapter должен отправлять записи в `runtime.logCallback` с заголовком `x-craftpanel-runtime-token`; callback проверяет токен и существование сервера владельца перед сохранением записи.
+
+## Realtime telemetry charts
+
+The dashboard polls the authenticated owner-scoped `servers.list` procedure every five seconds. Each received snapshot contributes CPU percentage, RAM percentage, and online player count to a client-side rolling history capped at 36 points. This keeps the chart lightweight and avoids presenting historical telemetry before the runtime reports it. Until the first snapshot arrives, each chart shows a collecting-data state. The charts are responsive and render consistently in light and dark themes.

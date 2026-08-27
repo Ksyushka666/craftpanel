@@ -27,9 +27,23 @@ import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
 import { useTheme } from "@/contexts/ThemeContext";
 import { getThemeToggleLabel } from "@/lib/theme";
+import {
+  appendMetricPoint,
+  createMetricPoint,
+  type MetricPoint,
+} from "@/lib/metrics";
 import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "wouter";
 import { toast } from "sonner";
+import {
+  Area,
+  AreaChart,
+  CartesianGrid,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
 import {
   Activity,
   ArrowUpRight,
@@ -156,6 +170,8 @@ export default function Home() {
   const [logFilter, setLogFilter] = useState<
     "all" | "system" | "info" | "warn" | "error" | "debug"
   >("all");
+  const [metricHistory, setMetricHistory] = useState<MetricPoint[]>([]);
+  const [historyServerId, setHistoryServerId] = useState<number | null>(null);
   const [configDraft, setConfigDraft] = useState({
     serverType: "java" as "java" | "bedrock",
     core: "Paper",
@@ -174,7 +190,8 @@ export default function Home() {
   });
 
   const serversQuery = trpc.servers.list.useQuery(undefined, {
-    refetchInterval: 30000,
+    refetchInterval: 5000,
+    refetchIntervalInBackground: false,
   });
   const servers = (serversQuery.data ?? []) as Server[];
   const activeServer =
@@ -324,6 +341,38 @@ export default function Home() {
       ? logs
       : logs.filter(log => log.level === logFilter);
   }, [logsQuery.data, logFilter]);
+  const chartData = useMemo(
+    () =>
+      metricHistory.map(point => ({
+        ...point,
+        time: new Date(point.timestamp).toLocaleTimeString("ru-RU", {
+          hour: "2-digit",
+          minute: "2-digit",
+        }),
+      })),
+    [metricHistory]
+  );
+
+  useEffect(() => {
+    if (!activeServer) {
+      setMetricHistory([]);
+      setHistoryServerId(null);
+      return;
+    }
+    const point = createMetricPoint(activeServer);
+    setMetricHistory(previous => {
+      const base = historyServerId === activeServer.id ? previous : [];
+      return appendMetricPoint(base, point);
+    });
+    setHistoryServerId(activeServer.id);
+  }, [
+    activeServer?.id,
+    activeServer?.cpuPercent,
+    activeServer?.ramUsedMb,
+    activeServer?.ramTotalMb,
+    activeServer?.playersOnline,
+    historyServerId,
+  ]);
 
   const runServerAction = (action: "start" | "stop" | "restart") => {
     if (!activeServer) return;
@@ -694,7 +743,7 @@ export default function Home() {
                     </h2>
                   </div>
                   <span className="mono text-[10px] text-[#8b9586]">
-                    polling / 30 sec
+                    polling / 5 sec
                   </span>
                 </div>
                 <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
@@ -745,6 +794,8 @@ export default function Home() {
                 </div>
               </section>
             )}
+
+            {activeServer && <MetricCharts history={chartData} />}
 
             {activeServer && (
               <section className="grid gap-5 lg:grid-cols-[1.1fr_0.9fr]">
@@ -1016,6 +1067,143 @@ export default function Home() {
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+function MetricCharts({
+  history,
+}: {
+  history: Array<MetricPoint & { time: string }>;
+}) {
+  const plots = [
+    {
+      key: "cpu",
+      label: "CPU",
+      value: history.at(-1)?.cpu ?? 0,
+      suffix: "%",
+      color: "#f0a35a",
+      gradient: "cpuGradient",
+      domain: [0, 100] as [number, number],
+    },
+    {
+      key: "ram",
+      label: "RAM",
+      value: history.at(-1)?.ram ?? 0,
+      suffix: "%",
+      color: "#789cff",
+      gradient: "ramGradient",
+      domain: [0, 100] as [number, number],
+    },
+    {
+      key: "players",
+      label: "Игроки",
+      value: history.at(-1)?.players ?? 0,
+      suffix: " онлайн",
+      color: "#b8e957",
+      gradient: "playersGradient",
+      domain: [0, "auto"] as [number, "auto"],
+    },
+  ] as const;
+
+  return (
+    <section className="rounded-[24px] border border-[#dfe2d6] bg-[#fffdf7] p-5 panel-shadow dark:border-white/10 dark:bg-[#171f19] sm:p-6">
+      <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <p className="mono text-[10px] uppercase tracking-[0.16em] text-[#8b9586]">
+            Live history / 36 points
+          </p>
+          <h2 className="mt-1 text-xl font-semibold tracking-[-0.04em]">
+            Нагрузка в реальном времени
+          </h2>
+        </div>
+        <div className="flex items-center gap-2 text-[10px] text-[#899386]">
+          <span className="status-dot online" /> обновляется каждые 5 сек
+        </div>
+      </div>
+      <div className="grid gap-4 lg:grid-cols-3">
+        {plots.map(plot => (
+          <div
+            key={plot.key}
+            className="rounded-2xl border border-[#e5e8dd] bg-[#f7f6ef] p-4 dark:border-white/10 dark:bg-[#202a21]"
+          >
+            <div className="mb-2 flex items-end justify-between gap-2">
+              <div>
+                <p className="text-[10px] text-[#899386]">{plot.label}</p>
+                <p className="mt-1 text-xl font-semibold tracking-[-0.05em]">
+                  {plot.value.toFixed(plot.key === "players" ? 0 : 1)}
+                  <span className="ml-1 text-[10px] font-normal text-[#899386]">
+                    {plot.suffix}
+                  </span>
+                </p>
+              </div>
+              <span className="mono text-[9px] text-[#899386]">
+                {history.length ? `${history.length} pts` : "ожидание"}
+              </span>
+            </div>
+            <div className="h-32">
+              {history.length ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart
+                    data={history}
+                    margin={{ top: 8, right: 2, left: -24, bottom: 0 }}
+                  >
+                    <defs>
+                      <linearGradient
+                        id={plot.gradient}
+                        x1="0"
+                        y1="0"
+                        x2="0"
+                        y2="1"
+                      >
+                        <stop
+                          offset="0%"
+                          stopColor={plot.color}
+                          stopOpacity={0.35}
+                        />
+                        <stop
+                          offset="100%"
+                          stopColor={plot.color}
+                          stopOpacity={0}
+                        />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid
+                      stroke="currentColor"
+                      strokeOpacity={0.08}
+                      vertical={false}
+                    />
+                    <XAxis dataKey="time" hide />
+                    <YAxis domain={plot.domain} hide />
+                    <Tooltip
+                      contentStyle={{
+                        borderRadius: 10,
+                        border: "1px solid rgba(148,163,134,.25)",
+                        background: "#151c16",
+                        color: "#edf4e8",
+                        fontSize: 11,
+                      }}
+                      labelStyle={{ color: "#a7b3a5", fontSize: 10 }}
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey={plot.key}
+                      stroke={plot.color}
+                      strokeWidth={2}
+                      fill={`url(#${plot.gradient})`}
+                      isAnimationActive={false}
+                    />
+                  </AreaChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="flex h-full items-center justify-center rounded-xl border border-dashed border-[#d8ddd0] text-[10px] text-[#899386] dark:border-white/10">
+                  Собираем первые данные…
+                </div>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
   );
 }
 
