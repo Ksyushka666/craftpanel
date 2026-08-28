@@ -12,6 +12,7 @@ import { registerScheduledRoutes } from "../scheduled";
 import { registerMultipartUploadRoute } from "../multipartUpload";
 import { registerExportRoutes } from "../export";
 import { registerCustomAuthRoutes } from "../customAuth";
+import { ensureCustomAuthSchema } from "../db";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -33,6 +34,7 @@ async function findAvailablePort(startPort: number = 3000): Promise<number> {
 }
 
 async function startServer() {
+  await ensureCustomAuthSchema();
   const app = express();
   const server = createServer(app);
   // Falix signs the exact raw JSON body; mount this before the global JSON parser.

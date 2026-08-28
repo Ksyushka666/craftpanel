@@ -166,3 +166,6 @@
 - [x] Diagnose Render Discord callback token-exchange or user-lookup failure after provider consent (Render logs identify Discord token exchange failure)
 - [ ] Fix callback session creation and verify redirect to /servers after real Discord login
 - [x] Add route-level regression coverage for callback success session cookie/redirect and token-exchange failure redirect (69 tests pass)
+- [ ] Verify Render production users schema mismatch: live screenshot shows users query failure while managed local database already contains auth columns
+- [ ] Apply additive production migration and verify users auth columns on Render database (startup compatibility migration added; live verification pending)
+- [ ] Re-run live email and Discord auth flows after database migration

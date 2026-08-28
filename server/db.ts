@@ -2,6 +2,7 @@ import { and, desc, eq, gte, like, lte } from "drizzle-orm";
 import { createHash, randomBytes } from "node:crypto";
 import { storagePut } from "./storage";
 import { drizzle } from "drizzle-orm/mysql2";
+import { sql } from "drizzle-orm";
 import {
   InsertUser,
   catalogInstallations,
@@ -41,6 +42,22 @@ export async function getDb() {
     }
   }
   return _db;
+}
+
+/** Additive compatibility migration for deployments created before custom auth fields existed. */
+export async function ensureCustomAuthSchema() {
+  const db = await getDb();
+  if (!db) return false;
+  try {
+    await db.execute(sql.raw("ALTER TABLE users ADD COLUMN IF NOT EXISTS passwordHash varchar(255) NULL"));
+    await db.execute(sql.raw("ALTER TABLE users ADD COLUMN IF NOT EXISTS discordId varchar(64) NULL"));
+    await db.execute(sql.raw("ALTER TABLE users ADD COLUMN IF NOT EXISTS loginMethod varchar(64) NULL"));
+    await db.execute(sql.raw("CREATE UNIQUE INDEX IF NOT EXISTS users_discord_id_unique ON users (discordId)"));
+    return true;
+  } catch (error) {
+    console.error("[Database] Custom auth schema migration failed:", error);
+    return false;
+  }
 }
 
 export async function upsertUser(user: InsertUser): Promise<void> {
