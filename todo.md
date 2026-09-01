@@ -169,3 +169,6 @@
 - [ ] Verify Render production users schema mismatch: live screenshot shows users query failure while managed local database already contains auth columns
 - [ ] Apply additive production migration and verify users auth columns on Render database (startup compatibility migration added; live verification pending)
 - [ ] Re-run live email and Discord auth flows after database migration
+- [ ] Diagnose Render create-server failure after successful authentication
+- [ ] Fix create-server backend/database/provider flow and preserve owner permissions
+- [ ] Add create-server regression coverage and verify live creation on Render

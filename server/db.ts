@@ -20,6 +20,7 @@ import {
   serverInvitations,
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
+import { APPLICATION_SCHEMA_SQL } from "./schemaBootstrap";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -44,18 +45,17 @@ export async function getDb() {
   return _db;
 }
 
-/** Additive compatibility migration for deployments created before custom auth fields existed. */
+/** Idempotent compatibility bootstrap for deployments whose database has not received Drizzle migrations. */
 export async function ensureCustomAuthSchema() {
   const db = await getDb();
   if (!db) return false;
   try {
-    await db.execute(sql.raw("ALTER TABLE users ADD COLUMN IF NOT EXISTS passwordHash varchar(255) NULL"));
-    await db.execute(sql.raw("ALTER TABLE users ADD COLUMN IF NOT EXISTS discordId varchar(64) NULL"));
-    await db.execute(sql.raw("ALTER TABLE users ADD COLUMN IF NOT EXISTS loginMethod varchar(64) NULL"));
-    await db.execute(sql.raw("CREATE UNIQUE INDEX IF NOT EXISTS users_discord_id_unique ON users (discordId)"));
+    for (const statement of APPLICATION_SCHEMA_SQL) {
+      await db.execute(sql.raw(statement));
+    }
     return true;
   } catch (error) {
-    console.error("[Database] Custom auth schema migration failed:", error);
+    console.error("[Database] Application schema bootstrap failed:", error);
     return false;
   }
 }
